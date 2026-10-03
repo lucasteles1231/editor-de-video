@@ -158,7 +158,7 @@ para você, sem mexer no do sistema), outro instala o editor, e o último abre.
 ### Windows
 
 1. Abra o **PowerShell**: no menu Iniciar, digite "PowerShell".
-2. Instale o uv:
+2. Instale o uv (se já tiver, pule este passo):
 
    ```powershell
    powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
@@ -179,7 +179,7 @@ para você, sem mexer no do sistema), outro instala o editor, e o último abre.
 ### macOS
 
 1. Abra o **Terminal**: aperte ⌘ + espaço e digite "Terminal".
-2. Instale o uv:
+2. Instale o uv (se já tiver, pule este passo):
 
    ```bash
    curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -387,6 +387,18 @@ Editar de novo o mesmo vídeo pula a transcrição.
 Feche e abra o terminal de novo depois de instalar: o atalho do comando só passa a valer
 numa janela nova. Se ainda assim não funcionar, rode `uv tool update-shell`, feche e
 abra de novo.
+
+</details>
+
+<details>
+<summary><b>O instalador do uv avisou "shadowed by other commands"</b></summary>
+
+Você já tinha outro `uv` no computador, instalado pelo `pip` ou pelo Homebrew por
+exemplo, e ele vem antes no PATH. Isso não atrapalha: qualquer um dos dois instala o
+editor, e o comando `editar` vai para a mesma pasta.
+
+Se quiser ficar com um só, desinstale o antigo pelo mesmo caminho por onde ele veio:
+`pip uninstall uv` ou `brew uninstall uv`.
 
 </details>
 
