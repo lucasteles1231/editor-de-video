@@ -384,9 +384,15 @@ Editar de novo o mesmo vídeo pula a transcrição.
 <details>
 <summary><b><code>editar</code> não é reconhecido como comando</b></summary>
 
-Feche e abra o terminal de novo depois de instalar: o atalho do comando só passa a valer
-numa janela nova. Se ainda assim não funcionar, rode `uv tool update-shell`, feche e
-abra de novo.
+O instalador do uv põe a pasta dos comandos (`.local/bin`) no PATH, mas só as janelas
+abertas **depois** dele enxergam. Feche o terminal e abra de novo. No macOS, dá para
+resolver na mesma janela:
+
+```bash
+source ~/.local/bin/env
+```
+
+Se ainda assim não funcionar, rode `uv tool update-shell`, feche e abra de novo.
 
 </details>
 
