@@ -19,6 +19,7 @@ from tests.conftest import fazer_video
 pytestmark = pytest.mark.navegador
 
 playwright = pytest.importorskip("playwright.sync_api")
+expect = playwright.expect
 
 PORTA, TOKEN = 8911, "token-do-navegador"
 
@@ -66,13 +67,14 @@ def test_tour_edicao_e_thumbnail(navegador, endereco, tmp_path):
     pagina.on("console", lambda m: m.type == "error" and erros.append(m.text))
     pagina.goto(endereco)
 
-    # o tour abre sozinho na primeira visita e passa pelos sete passos
+    # O tour abre sozinho na primeira visita e passa pelos sete passos. Cada passo é
+    # esperado antes do clique seguinte: o balão anima entre um e outro, e no CI (mais
+    # lento) o texto ainda dizia "6 de 7" logo depois do sexto clique.
     progresso = pagina.locator(".driver-popover-progress-text")
-    progresso.wait_for(timeout=10_000)
-    assert progresso.inner_text() == "1 de 7"
-    for _ in range(6):
+    expect(progresso).to_have_text("1 de 7", timeout=10_000)
+    for passo in range(2, 8):
         pagina.locator(".driver-popover-next-btn").click()
-    assert progresso.inner_text() == "7 de 7"
+        expect(progresso).to_have_text(f"{passo} de 7")
     pagina.locator(".driver-popover-next-btn").click()      # "Começar a editar"
     pagina.locator(".driver-popover").wait_for(state="detached")
 
