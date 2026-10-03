@@ -1,0 +1,33 @@
+# Ambiente
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Página: dependências e montagem de desenvolvimento (a montada vai em editor/interface/estatico)
+web/node_modules/
+web/dist/
+
+# Vídeos e o que o editor produz — nunca no repositório
+*.mp4
+*.mov
+*.mkv
+*.webm
+*.avi
+*.gif
+!docs/img/*.gif
+*.palavras.json
+*.plano.json
+*.srt
+*.vtt
+saida/
+.modelos/
+
+# Sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Fixtures pequenas dos testes
+!tests/fixtures/*.mp4

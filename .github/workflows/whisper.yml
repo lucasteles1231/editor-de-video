@@ -1,0 +1,39 @@
+name: whisper de verdade
+
+# Manual: baixa o modelo tiny e edita um vídeo com fala sintetizada pela voz do
+# próprio sistema. É o que os testes comuns não cobrem (eles usam uma transcrição
+# falsa): o modelo carregando e transcrevendo de verdade no Windows e no Mac.
+on: workflow_dispatch
+
+jobs:
+  whisper:
+    name: whisper (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+
+      - name: fala (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Speech
+          $voz = New-Object System.Speech.Synthesis.SpeechSynthesizer
+          $voz.SetOutputToWaveFile("$PWD\fala.wav")
+          $voz.Speak("Hello, this is a quick test of the video editor. It should cut the pauses and write the words.")
+          $voz.Dispose()
+
+      - name: fala (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          say -o fala.aiff "Hello, this is a quick test of the video editor. It should cut the pauses and write the words."
+          afconvert -f WAVE -d LEI16@44100 fala.aiff fala.wav
+
+      - run: uv run python tests/whisper_de_verdade.py fala.wav

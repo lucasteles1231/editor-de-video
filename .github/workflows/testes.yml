@@ -1,0 +1,57 @@
+name: testes
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  nucleo:
+    name: núcleo e servidor (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      # -rs mostra os formatos pulados: um codec que falta no PyAV de um sistema
+      # aparece aqui, em vez de passar calado.
+      - run: uv run pytest -m "not navegador" -q -rs
+
+  pagina:
+    name: página (montagem e navegadores)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: monta a página e compara com a versionada
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+          if [ -n "$(git status --porcelain -- ../editor/interface/estatico)" ]; then
+            git status --short -- ../editor/interface/estatico
+            echo "::error::A página versionada está diferente da montada. Rode 'npm run build' em web/ e versione o resultado."
+            exit 1
+          fi
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run playwright install --with-deps chromium firefox webkit
+      - run: uv run pytest -m navegador -q -rs
