@@ -333,14 +333,13 @@ editar --formatos                                 # o que este computador grava
 ## Como funciona
 
 ```mermaid
-flowchart LR
-    V([seu vídeo]) --> A[áudio]
-    A --> W["transcrição<br/>Whisper, no seu computador"]
-    W --> C["cortes<br/>pausas medidas no áudio"]
-    C --> P["plano<br/>legenda, adesivos, zoom,<br/>ícones e sons"]
-    P --> D["desenho quadro a quadro<br/>Pillow + NumPy"]
-    D --> S([vídeo editado])
-    P --> T["thumbnail<br/>Remotion Player, no navegador"]
+flowchart TD
+    V([seu vídeo]) --> W[transcrição com o Whisper, no seu computador]
+    W --> C[cortes nas pausas medidas no áudio]
+    C --> P[plano: legenda, adesivos, zoom, ícones e sons]
+    P --> D[desenho quadro a quadro]
+    P --> T[thumbnail, desenhada no navegador]
+    D --> S([vídeo editado + .srt + .vtt])
     T --> I([PNG e JPG])
 ```
 
@@ -473,9 +472,9 @@ Node.
 ```bash
 cd web
 npm ci
-uv run editar --porta 8765 --sem-navegador   # em outro terminal: a API
-npm run dev                                  # abra http://localhost:5173/?t=<token que o editar mostrou>
-npm run build                                # monta a página de volta no pacote
+uv run editar --porta 8765 --sem-navegador   # noutro terminal: a API
+npm run dev        # abra localhost:5173/?t=<token>, com o token que o editar mostrou
+npm run build      # monta a página de volta no pacote
 ```
 
 As imagens deste README são geradas pelo próprio editor:
