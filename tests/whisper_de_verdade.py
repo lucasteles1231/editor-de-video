@@ -11,6 +11,7 @@ arquivo: ele baixa o modelo e leva dezenas de segundos.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import sys
 import tempfile
@@ -28,6 +29,11 @@ PAUSA_S = 1.5
 
 
 def main() -> int:
+    # O console do Windows no CI é cp1252: sem isto, o "→" do resumo derrubava o script
+    # depois de a edição já ter dado certo (o comando editar faz o mesmo).
+    for fluxo in (sys.stdout, sys.stderr):
+        with contextlib.suppress(AttributeError, ValueError):
+            fluxo.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser(description="O Whisper de verdade, de ponta a ponta.")
     ap.add_argument("fala", type=Path, help="um arquivo de áudio com fala")
     ap.add_argument("--modelo", default="tiny")
