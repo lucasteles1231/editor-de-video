@@ -184,8 +184,15 @@ def test_montagem_com_personagem_e_narracao(navegador, endereco, tmp_path):
     pagina.set_input_files('[data-envio="personagem"] input', str(gif(tmp_path / "b.gif", lado=80)))
     expect(pagina.get_by_label("dados do personagem")).to_contain_text("4 quadros")
     expect(pagina.locator(".tela-montada .por-cima")).to_be_attached()
+    # De onde vem o áudio: com o personagem, só o fundo ou um áudio separado; e o fundo
+    # deste teste é mudo, então a pílula dele fica desligada.
+    audio_vem_de = pagina.get_by_role("group", name="de onde vem o áudio")
+    expect(audio_vem_de.get_by_role("button")).to_have_count(2)
+    expect(audio_vem_de.get_by_role("button", name="O vídeo de fundo")).to_be_disabled()
+    expect(pagina.locator('[data-envio="audio"]')).to_have_count(0)
+    audio_vem_de.get_by_role("button", name="Um áudio separado").click()
     pagina.set_input_files('[data-envio="audio"] input', str(audio_wav(tmp_path / "n.wav")))
-    expect(pagina.get_by_label("dados da narração")).to_contain_text("n.wav")
+    expect(pagina.get_by_label("dados do áudio separado")).to_contain_text("n.wav")
     # a montagem tem o "Mover o personagem" e o formato do quadro
     expect(pagina.locator("label.interruptor", has_text="Mover o personagem")).to_have_count(1)
     pagina.get_by_role("button", name="Em pé (9:16)").click()
@@ -194,7 +201,7 @@ def test_montagem_com_personagem_e_narracao(navegador, endereco, tmp_path):
                                and r.method == "POST") as pedido:
         pagina.get_by_role("button", name="Editar vídeo").click()
     montagem = pedido.value.post_data_json["montagem"]
-    assert montagem["formato"] == "vertical"
+    assert montagem["formato"] == "vertical" and montagem["fala"] == "audio"
     assert montagem["personagem_id"] and montagem["audio_id"] and "pessoa_id" not in montagem
     pagina.locator(".miniaturas img").first.wait_for(timeout=120_000)
 

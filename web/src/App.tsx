@@ -1,5 +1,6 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {api} from './api';
+import {falaEfetiva} from './fala';
 import {Painel} from './componentes/Painel';
 import {type Envio, PassoEdicoes, PassoEnvio, PassoLegenda, PassoSaida} from './componentes/Passos';
 import {ThumbPasso, chaveDoRecorte, propsDaThumb, type Recortes} from './componentes/ThumbPasso';
@@ -12,7 +13,8 @@ import type {
 } from './tipos';
 import {comecarTour, tourJaVisto} from './tour';
 
-const MONTAGEM_PADRAO: MontagemConfig = {porCima: 'pessoa', recorte: 'modnet', formato: 'fundo', tirarFundo: true};
+const MONTAGEM_PADRAO: MontagemConfig = {porCima: 'pessoa', recorte: 'modnet', formato: 'fundo', tirarFundo: true,
+  fala: null};
 const NADA_ENVIANDO: Record<Envio, number | null> = {video: null, fundo: null, pessoa: null, personagem: null, audio: null};
 const SEM_ERRO: Record<Envio, string> = {video: '', fundo: '', pessoa: '', personagem: '', audio: ''};
 
@@ -111,7 +113,9 @@ export const App: React.FC = () => {
     personagem: comPersonagem && personagem
       ? {info: personagem, recorte: recorteDoPersonagem, tirarFundo: montagem.tirarFundo} : null,
   }), [naMontagem, comPersonagem, fundo, personagem, recorteDoPersonagem, montagem.tirarFundo]);
-  const podeEditar = !naMontagem ? Boolean(unico) : Boolean(fundo && (comPersonagem ? personagem : pessoa));
+  const fala = falaEfetiva(montagem, fundo, pessoa, audio);
+  const podeEditar = !naMontagem ? Boolean(unico)
+    : Boolean(fundo && (comPersonagem ? personagem : pessoa) && (fala !== 'audio' || audio));
   const pararDeAcompanhar = useRef<(() => void) | null>(null);
   const recortesPedidos = useRef(new Set<string>());
   const thumbAtual = useRef(thumb);
@@ -197,7 +201,13 @@ export const App: React.FC = () => {
       return;
     }
     if (qual === 'audio') {
-      api.enviarAudio(arquivo, progresso).then(setAudio).catch(falhou).finally(fim);
+      // O áudio separado que chega passa a ser a escolha.
+      api.enviarAudio(arquivo, progresso)
+        .then((a) => {
+          setAudio(a);
+          setMontagem((m) => ({...m, fala: 'audio'}));
+        })
+        .catch(falhou).finally(fim);
       return;
     }
     api.enviar(arquivo, progresso)
@@ -322,8 +332,9 @@ export const App: React.FC = () => {
       fundo_id: fundo.id,
       ...(comPersonagem && personagem ? {personagem_id: personagem.id} : {}),
       ...(!comPersonagem && pessoa ? {pessoa_id: pessoa.id} : {}),
-      ...(audio ? {audio_id: audio.id} : {}),
+      ...(fala === 'audio' && audio ? {audio_id: audio.id} : {}),
       recorte: montagem.recorte, formato: montagem.formato, tirar_fundo_do_personagem: montagem.tirarFundo,
+      fala,
     }};
     try {
       const t = await api.criarTarefa(alvo, edicao, saida, previa ? 15 : null);
@@ -336,7 +347,7 @@ export const App: React.FC = () => {
       setErroEdicao((e as Error).message);
     }
   }, [video, edicao, saida, previa, quandoTerminar, podeEditar, naMontagem, fundo, comPersonagem, personagem,
-    pessoa, audio, montagem, camadas]);
+    pessoa, audio, montagem, camadas, fala]);
 
   const regerar = () => {
     if (tarefa?.estado === 'pronto' && video) void gerarThumbs(tarefa.id, video, thumb, camadas);

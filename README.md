@@ -154,8 +154,8 @@ escolher as edições, escolher a saída e, se quiser, a thumbnail.
 
 <img src="docs/img/interface-progresso.png" alt="O progresso da edição, etapa por etapa, com o tempo que falta" width="300" align="right">
 
-- **Envio:** um vídeo só, ou a montagem em camadas: o fundo, a pessoa ou o personagem e,
-  se quiser, a narração à parte.
+- **Envio:** um vídeo só, ou a montagem em camadas: o fundo, a pessoa ou o personagem, e
+  a escolha de onde vem o áudio (o fundo, a pessoa ou um arquivo separado).
 - **Edições:** ligue e desligue cada efeito, e ajuste a pausa máxima e a força do zoom.
 - **Legenda:** o idioma da fala, o tamanho do modelo e se quer o `.srt` e o `.vtt`.
 - **Saída:** a extensão (MP4, MOV, WebM, MKV ou GIF), o codec, a resolução, os quadros por
@@ -243,8 +243,10 @@ separados. No passo 1, escolha **Um fundo e, por cima, você ou um personagem**:
     tempo isso leva.
 - **Ou por cima, um personagem animado:** um GIF, PNG animado ou WebP, em loop do começo
   ao fim. Se ele tem um fundo de cor única, essa cor sai.
-- **A narração à parte (opcional):** um MP3, WAV ou M4A. Sem ela, a fala vem do vídeo da
-  pessoa ou, se ele não tiver som, do fundo. É da fala que saem a legenda e os cortes.
+- **O áudio vem de:** você escolhe entre o vídeo de fundo, o vídeo da pessoa ou um áudio
+  separado (MP3, WAV ou M4A). Com o personagem, que não tem som, as opções são o fundo e
+  o áudio separado. É desse áudio que saem a legenda e os cortes, e um vídeo sem som fica
+  com a opção desligada.
 - **O formato do quadro** fica no passo 4: igual ao fundo, em pé, deitado ou quadrado. O
   fundo entra inteiro, e as sobras ficam com ele mesmo, desfocado.
 
@@ -382,6 +384,7 @@ editar video.mp4 --formato webm --resolucao 720p  # WebM (VP9) em 720p
 editar video.mp4 --sem-zoom --sem-sons            # sem zoom e sem efeitos sonoros
 editar eu.mp4 --fundo tela.mp4 --quadro vertical  # você por cima da tela gravada, em pé
 editar --fundo jogo.mp4 --personagem boneco.gif --audio narracao.m4a
+editar eu.mp4 --fundo aula.mp4 --fala fundo        # o som vem da aula, e não da câmera
 editar talk.mp4 --idioma en --modelo medium       # fala em inglês, modelo maior
 editar video.mp4 -o final.mov --codec prores      # ProRes, para levar a outro editor
 editar --formatos                                 # o que este computador grava
@@ -405,7 +408,8 @@ editar --formatos                                 # o que este computador grava
 | `--fundo` | a montagem: o vídeo de fundo, sem pessoa | |
 | `--pessoa` | o vídeo de você falando, por cima do fundo | o vídeo do argumento |
 | `--personagem` | um GIF, PNG animado ou WebP, em loop por cima | |
-| `--audio` | a narração à parte | o som da pessoa, ou o do fundo |
+| `--audio` | um áudio separado (a narração gravada à parte) | |
+| `--fala` | de onde vem o áudio: `fundo`, `pessoa` ou `audio` | o `--audio`; senão a pessoa, se tiver som; senão o fundo |
 | `--recorte` | `transparente` (o vídeo já vem sem fundo) ou `modnet` | detectado no arquivo |
 | `--quadro` | `fundo`, `vertical`, `horizontal` ou `quadrado` | `fundo` |
 | `--parada` | quem está por cima não muda de lugar | |

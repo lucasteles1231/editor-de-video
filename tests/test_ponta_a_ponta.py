@@ -207,6 +207,21 @@ class TestAMontagem:
             render.editar(None, tmp_path / "s.mp4", OpcoesDeEdicao(), saida.OpcoesDeSaida(),
                           montagem=m)
 
+    def test_o_audio_vem_do_fundo_quando_escolhido(self, tmp_path):
+        """A pessoa também fala, mas a escolha é o fundo: a duração é a dele."""
+        from editor.montagem import Montagem
+
+        fundo = fazer_video(tmp_path / "tela.mp4", largura=320, altura=180, segundos=4.0)
+        pessoa = fazer_video(tmp_path / "eu.mp4", largura=180, altura=320, segundos=7.0)
+        r = render.editar(None, tmp_path / "s.mp4", OpcoesDeEdicao(cortes=False),
+                          saida.OpcoesDeSaida(),
+                          montagem=Montagem(fundo, pessoa=pessoa, fala="fundo"))
+        assert r.duracao_original == pytest.approx(4.0, abs=0.1)
+        r = render.editar(None, tmp_path / "s2.mp4", OpcoesDeEdicao(cortes=False),
+                          saida.OpcoesDeSaida(),
+                          montagem=Montagem(fundo, pessoa=pessoa, fala="pessoa"))
+        assert r.duracao_original == pytest.approx(7.0, abs=0.1)
+
     def test_no_terminal(self, tmp_path, monkeypatch):
         from editor import cli
         from tests.test_montagem import gif, video_com_alfa
@@ -230,3 +245,11 @@ class TestAMontagem:
         assert cli.main([str(eu), "--fundo", str(fundo)]) == 0
         assert (pedidos[-1][3].pessoa, pedidos[-1][3].recorte) == (eu, "transparente")
         assert cli.main(["--pessoa", str(eu)]) == 2          # sem --fundo
+        assert cli.main(["--fala", "fundo"]) == 2             # sem --fundo, e sem abrir a página
+        # de onde vem o áudio
+        assert cli.main([str(eu), "--fundo", str(fundo), "--fala", "fundo"]) == 0
+        assert pedidos[-1][3].fala == "fundo"
+        assert cli.main(["--fundo", str(fundo), "--personagem", str(boneco),
+                         "--fala", "pessoa"]) == 2
+        assert cli.main(["--fundo", str(fundo), "--personagem", str(boneco),
+                         "--fala", "audio"]) == 2             # sem --audio

@@ -63,6 +63,7 @@ function enviarArquivo<T>(rota: string, arquivo: File, aoProgresso: (fracao: num
 export type PedidoDeMontagem = {
   fundo_id: string; pessoa_id?: string; personagem_id?: string; audio_id?: string;
   recorte: 'transparente' | 'modnet'; formato: string; tirar_fundo_do_personagem: boolean;
+  fala: 'fundo' | 'pessoa' | 'audio';
 };
 
 export const api = {

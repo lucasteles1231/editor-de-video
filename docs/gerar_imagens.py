@@ -501,9 +501,11 @@ def capturas(exemplo: Path, pasta: Path, *, ia_de_verdade: bool = False,
                 pagina.set_input_files('[data-envio="personagem"] input',
                                        str(desenhar_palito(pasta / "palito.gif")))
                 pagina.get_by_label("dados do personagem").wait_for(timeout=60_000)
+                pagina.get_by_role("group", name="de onde vem o áudio").get_by_role(
+                    "button", name="Um áudio separado").click()
                 pagina.set_input_files('[data-envio="audio"] input',
                                        str(narracao(exemplo, pasta / "narracao.wav")))
-                pagina.get_by_label("dados da narração").wait_for(timeout=60_000)
+                pagina.get_by_label("dados do áudio separado").wait_for(timeout=60_000)
                 pagina.wait_for_timeout(1200)
                 salvar(pagina.locator("#passo-envio").screenshot(), "interface-montagem.png", 1200)
                 ctx.close()

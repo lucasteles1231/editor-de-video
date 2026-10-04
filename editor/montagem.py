@@ -17,8 +17,10 @@ um jogo, slides), e não um borrão do mesmo quadro.
   e quadrado, a câmera clássica de quem grava a tela) e, nos movimentos do plano, um
   lado, o meio, em cima, embaixo, perto ou longe. A posição é calculada pelo que
   aparece (a silhueta), e não pelo quadro inteiro da camada.
-- **A fala** vem do áudio à parte, se houver; senão do vídeo da pessoa, se ele tiver
-  som; senão do fundo.
+- **O áudio** vem de onde quem edita escolher: do vídeo de fundo, do vídeo da pessoa ou
+  de um áudio separado (com o personagem, que não tem som, só do fundo ou do separado).
+  Sem escolha, vale o áudio separado; senão o vídeo da pessoa, se ele tiver som; senão
+  o fundo.
 """
 from __future__ import annotations
 
@@ -48,6 +50,8 @@ from editor.plano import Movimento, Plano
 logger = logging.getLogger(__name__)
 
 RECORTES = ("modnet", "transparente")
+#: De onde vem o áudio (o que se ouve, e de onde saem a legenda e os cortes).
+FALAS = ("fundo", "pessoa", "audio")
 FORMATOS = ("fundo", "vertical", "horizontal", "quadrado")
 PROPORCOES = {"vertical": (9, 16), "horizontal": (16, 9), "quadrado": (1, 1)}
 
@@ -99,23 +103,43 @@ class Montagem:
     #: O formato do quadro final: "fundo", "vertical", "horizontal" ou "quadrado".
     formato: str = "fundo"
     tirar_fundo_do_personagem: bool = True
+    #: De onde vem o áudio: "fundo", "pessoa" ou "audio" (``None``: a regra automática).
+    fala: str | None = None
 
     def problemas(self) -> list[str]:
         erros = []
         if (self.pessoa is None) == (self.personagem is None):
             erros.append("a montagem leva o vídeo da pessoa ou um personagem, um dos dois")
+        if self.fala is not None and self.fala not in FALAS:
+            erros.append(f"o áudio vem de {', '.join(FALAS)}, e não de {self.fala}")
+        if self.fala == "pessoa" and self.pessoa is None:
+            erros.append("o áudio do vídeo da pessoa só existe com o vídeo da pessoa: com o "
+                         "personagem, ele vem do fundo ou de um áudio separado")
+        if self.fala == "audio" and self.audio is None:
+            erros.append("o áudio separado foi escolhido, mas nenhum arquivo de áudio veio")
         if self.recorte not in RECORTES:
             erros.append(f"recorte desconhecido: {self.recorte} (use {' ou '.join(RECORTES)})")
         if self.formato not in FORMATOS:
             erros.append(f"formato desconhecido: {self.formato} (use {', '.join(FORMATOS)})")
         return erros
 
-    def fonte_da_fala(self) -> Path:
-        """De onde vem a fala: o áudio à parte; senão o vídeo da pessoa, se tiver som;
-        senão o fundo."""
+    def tipo_da_fala(self) -> str:
+        """De onde vem o áudio: a escolha, ou a regra automática (o áudio separado; senão o
+        vídeo da pessoa, se ele tiver som; senão o fundo)."""
+        if self.fala is not None:
+            return self.fala
         if self.audio is not None:
-            return Path(self.audio)
+            return "audio"
         if self.pessoa is not None and video_mod.sondar(Path(self.pessoa)).tem_audio:
+            return "pessoa"
+        return "fundo"
+
+    def fonte_da_fala(self) -> Path:
+        """O arquivo de onde vem o áudio."""
+        tipo = self.tipo_da_fala()
+        if tipo == "audio" and self.audio is not None:
+            return Path(self.audio)
+        if tipo == "pessoa" and self.pessoa is not None:
             return Path(self.pessoa)
         return Path(self.fundo)
 
@@ -514,7 +538,7 @@ class Montador:
         return tela.convert("RGB")
 
 
-__all__ = ["FORMATOS", "RECORTES", "Camada", "CamadaComAlfa", "CamadaDePersonagem",
+__all__ = ["FALAS", "FORMATOS", "RECORTES", "Camada", "CamadaComAlfa", "CamadaDePersonagem",
            "CamadaRecortada", "Montador", "Montagem", "Personagem", "PersonagemInvalido",
            "alvo", "casa", "cor_do_fundo", "encaixe", "ler_personagem", "sobras",
            "tamanho_do_quadro", "tirar_fundo_de_cor"]

@@ -547,7 +547,8 @@ def criar_app(token: str, *, porta: int, pasta_saida: Path | None = None,
             personagem=personagem["caminho"] if personagem else None,
             audio=audio["caminho"] if audio else None, recorte=recorte_,
             formato=str(pedido.get("formato") or "fundo"),
-            tirar_fundo_do_personagem=bool(pedido.get("tirar_fundo_do_personagem", True)))
+            tirar_fundo_do_personagem=bool(pedido.get("tirar_fundo_do_personagem", True)),
+            fala=str(pedido["fala"]) if pedido.get("fala") else None)
         erros = m.problemas()
         if erros:
             raise HTTPException(422, "; ".join(erros))

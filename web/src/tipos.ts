@@ -65,12 +65,16 @@ export type VideoInfo = {
 export type Modo = 'um' | 'montagem';
 export type PorCima = 'pessoa' | 'personagem';
 export type FormatoDoQuadro = 'fundo' | 'vertical' | 'horizontal' | 'quadrado';
+/** De onde vem o áudio: o vídeo de fundo, o vídeo da pessoa ou um áudio separado. */
+export type Fala = 'fundo' | 'pessoa' | 'audio';
 export type MontagemConfig = {
   porCima: PorCima;
   /** Como tirar o fundo da pessoa: o alfa do arquivo, ou o MODNet. */
   recorte: 'transparente' | 'modnet';
   formato: FormatoDoQuadro;
   tirarFundo: boolean;
+  /** A escolha de quem edita (``null``: a primeira que tem som; ver fala.ts). */
+  fala: Fala | null;
 };
 
 export type PersonagemInfo = {

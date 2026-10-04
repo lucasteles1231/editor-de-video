@@ -308,7 +308,7 @@ def _editar_montagem(montagem: Montagem, destino: Path, edicao: OpcoesDeEdicao,
     tempo de saída, para não pular nos cortes."""
     info_do_fundo = video_mod.sondar(montagem.fundo)
     fala = montagem.fonte_da_fala()
-    if montagem.audio is not None and Path(fala) == Path(montagem.audio):
+    if montagem.tipo_da_fala() == "audio":
         duracao_da_fala, tem_audio = video_mod.duracao_do_audio(fala), True
     else:
         info_da_fala = video_mod.sondar(fala)

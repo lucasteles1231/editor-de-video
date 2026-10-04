@@ -78,7 +78,10 @@ def argumentos() -> argparse.ArgumentParser:
     m.add_argument("--personagem", type=Path, metavar="ANIMACAO",
                    help="um GIF, PNG animado ou WebP de personagem, em loop por cima")
     m.add_argument("--audio", type=Path, metavar="ARQUIVO",
-                   help="a narração à parte (sem ela, vale o som da pessoa ou do fundo)")
+                   help="um áudio separado (a narração gravada à parte)")
+    m.add_argument("--fala", choices=["fundo", "pessoa", "audio"],
+                   help="de onde vem o áudio (padrão: o --audio; senão a pessoa, se tiver "
+                        "som; senão o fundo)")
     m.add_argument("--recorte", choices=["modnet", "transparente"],
                    help="como tirar o fundo da pessoa (padrão: o alfa do arquivo, se houver)")
     m.add_argument("--quadro", default="fundo",
@@ -140,7 +143,8 @@ def main(argv: list[str] | None = None) -> int:
                   f"{', '.join(d['audios']) or '—'}")
         return 0
 
-    if a.video is None and a.fundo is None and not (a.pessoa or a.personagem or a.audio):
+    if a.video is None and a.fundo is None and not (a.pessoa or a.personagem or a.audio
+                                                    or a.fala):
         from editor.servidor import abrir
 
         return abrir(porta=a.porta, navegador=not a.sem_navegador)
@@ -192,8 +196,8 @@ def _montagem(a: argparse.Namespace):
     from editor.montagem import Montagem
 
     if a.fundo is None:
-        if a.pessoa or a.personagem or a.audio:
-            return None, "--pessoa, --personagem e --audio vão junto com --fundo"
+        if a.pessoa or a.personagem or a.audio or a.fala:
+            return None, "--pessoa, --personagem, --audio e --fala vão junto com --fundo"
         if a.video is None or not a.video.is_file():
             return None, f"não achei o vídeo: {a.video}"
         return None, ""
@@ -211,7 +215,8 @@ def _montagem(a: argparse.Namespace):
         recorte = "transparente" if video_mod.tem_alfa(pessoa) else "modnet"
     return Montagem(a.fundo, pessoa=pessoa, personagem=a.personagem, audio=a.audio,
                     recorte=recorte or "modnet", formato=a.quadro,
-                    tirar_fundo_do_personagem=not a.manter_fundo_do_personagem), ""
+                    tirar_fundo_do_personagem=not a.manter_fundo_do_personagem,
+                    fala=a.fala), ""
 
 
 __all__ = ["argumentos", "main"]

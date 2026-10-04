@@ -3,9 +3,10 @@
  */
 import React, {useRef, useState} from 'react';
 import {api} from '../api';
+import {falaEfetiva, opcoesDeFala, semSom} from '../fala';
 import {bytes, duracao, numero} from '../formatar';
 import type {
-  AudioInfo, Edicao, Estado, FormatoDoQuadro, Modo, MontagemConfig, PersonagemInfo, PorCima, Saida, VideoInfo,
+  AudioInfo, Edicao, Estado, Fala, FormatoDoQuadro, Modo, MontagemConfig, PersonagemInfo, PorCima, Saida, VideoInfo,
 } from '../tipos';
 import {Interruptor} from './Interruptor';
 
@@ -95,10 +96,15 @@ export type PropsDoEnvio = {
 
 const Aviso: React.FC<{texto: string}> = ({texto}) => (texto ? <div className="aviso erro">{texto}</div> : null);
 
+const NOMES_DA_FALA: Record<Fala, string> = {fundo: 'O vídeo de fundo', pessoa: 'O vídeo da pessoa',
+  audio: 'Um áudio separado'};
+
 const EnvioDaMontagem: React.FC<PropsDoEnvio> = (p) => {
   const m = p.montagem;
-  const fala = m.porCima === 'pessoa' && p.pessoa?.tem_audio ? 'do vídeo da pessoa'
-    : p.fundo?.tem_audio ? 'do vídeo de fundo' : '';
+  const fala = falaEfetiva(m, p.fundo, p.pessoa, p.audio);
+  const mudos = [semSom(p.fundo) ? 'o vídeo de fundo' : '',
+    m.porCima === 'pessoa' && semSom(p.pessoa) ? 'o vídeo da pessoa' : ''].filter(Boolean);
+  const nenhumSom = fala !== 'audio' && semSom(fala === 'fundo' ? p.fundo : p.pessoa);
   const custo = p.pessoa ? p.pessoa.duracao * p.pessoa.fps * CUSTO_DO_RECORTE_POR_QUADRO : 0;
   return (
     <div className="camadas">
@@ -180,22 +186,34 @@ const EnvioDaMontagem: React.FC<PropsDoEnvio> = (p) => {
       </div>
 
       <div className="camada">
-        <strong>Narração à parte <span className="etiqueta">opcional</span></strong>
+        <strong>O áudio vem de</strong>
+        <div className="linha-de-opcoes" role="group" aria-label="de onde vem o áudio">
+          {opcoesDeFala(m).map((f) => {
+            const mudo = f === 'fundo' ? semSom(p.fundo) : f === 'pessoa' ? semSom(p.pessoa) : false;
+            return (
+              <button key={f} type="button" className="pilula" aria-pressed={fala === f} disabled={mudo}
+                title={mudo ? 'este vídeo não tem som' : undefined} onClick={() => p.mudarMontagem({fala: f})}>
+                {NOMES_DA_FALA[f]}
+              </button>
+            );
+          })}
+        </div>
         <small>
-          {p.audio ? 'A fala vem da narração: dela saem a legenda e os cortes.'
-            : fala ? `Sem ela, a fala vem ${fala}.`
-              : 'Sem ela, não há fala nenhuma: o vídeo sai sem cortes e sem legenda.'}
+          {nenhumSom ? 'Nenhum dos vídeos tem som: sem um áudio separado, o vídeo sai mudo, sem cortes e sem legenda.'
+            : fala === 'audio' && !p.audio ? 'Envie o áudio: dele saem a legenda e os cortes.'
+              : 'Dele saem a legenda e os cortes.'}
+          {mudos.length && !nenhumSom ? ` Sem som: ${mudos.join(' e ')}.` : ''}
         </small>
-        {p.audio ? (
-          <div className="ficha" aria-label="dados da narração">
+        {fala === 'audio' ? (p.audio ? (
+          <div className="ficha" aria-label="dados do áudio separado">
             <span className="etiqueta">{p.audio.nome}</span>
             <span className="etiqueta">{duracao(p.audio.duracao)}</span>
-            <button type="button" className="botao pequeno" onClick={p.aoTirarAudio}>Tirar a narração</button>
+            <button type="button" className="botao pequeno" onClick={p.aoTirarAudio}>Trocar o áudio</button>
           </div>
         ) : (
-          <Soltar nome="audio" rotulo="Arraste a narração" dica="MP3, WAV, M4A…" aceita="audio/*,.mp3,.wav,.m4a"
+          <Soltar nome="audio" rotulo="Arraste o áudio" dica="MP3, WAV, M4A…" aceita="audio/*,.mp3,.wav,.m4a"
             progresso={p.progresso.audio} aoEscolher={(f) => p.aoEscolher('audio', f)} />
-        )}
+        )) : null}
         <Aviso texto={p.erro.audio} />
       </div>
     </div>

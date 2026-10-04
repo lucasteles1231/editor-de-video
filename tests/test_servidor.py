@@ -381,6 +381,32 @@ class TestAMontagem:
         r = cliente.post("/api/tarefas", headers=CABECA, json=pedido)
         assert r.status_code == 422 and "transparência" in r.json()["detail"]
 
+    def test_escolhas_de_audio_que_nao_servem(self, cliente, tmp_path):
+        from tests.test_montagem import gif
+
+        fundo = _enviar(cliente, fazer_video(tmp_path / "tela.mp4"))
+        boneco = self._enviar_arquivo(cliente, "/api/personagens", gif(tmp_path / "b.gif"),
+                                      "image/gif").json()
+        base = {"fundo_id": fundo["id"], "personagem_id": boneco["id"]}
+        for fala, motivo in (("pessoa", "personagem"), ("audio", "nenhum arquivo")):
+            r = cliente.post("/api/tarefas", headers=CABECA,
+                             json={"montagem": {**base, "fala": fala}, "edicao": {}, "saida": {}})
+            assert r.status_code == 422 and motivo in r.json()["detail"], r.text
+
+    def test_o_audio_escolhido_manda_na_duracao(self, cliente, tmp_path):
+        from tests.test_montagem import gif
+
+        fundo = _enviar(cliente, fazer_video(tmp_path / "tela.mp4", segundos=2.0))
+        boneco = self._enviar_arquivo(cliente, "/api/personagens", gif(tmp_path / "b.gif"),
+                                      "image/gif").json()
+        pedido = {"montagem": {"fundo_id": fundo["id"], "personagem_id": boneco["id"],
+                               "fala": "fundo"}, "edicao": {"cortes": False}, "saida": {}}
+        r = cliente.post("/api/tarefas", headers=CABECA, json=pedido)
+        assert r.status_code == 200, r.text
+        t = _esperar(cliente, r.json()["id"])
+        assert t["estado"] == "pronto", t
+        assert t["resultado"]["duracao_original"] == pytest.approx(2.0, abs=0.1)
+
     def test_montagem_sem_nada_por_cima(self, cliente, tmp_path):
         fundo = _enviar(cliente, fazer_video(tmp_path / "tela.mp4"))
         r = cliente.post("/api/tarefas", headers=CABECA,

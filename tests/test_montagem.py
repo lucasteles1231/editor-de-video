@@ -159,6 +159,29 @@ class TestAMontagem:
         assert montagem.Montagem(fundo, personagem=boneco, audio=audio).fonte_da_fala() == audio
 
 
+    def test_a_escolha_de_onde_vem_o_audio(self, tmp_path):
+        fundo = fazer_video(tmp_path / "f.mp4", segundos=0.5)
+        falando = fazer_video(tmp_path / "pf.mp4", segundos=0.5)
+        audio = audio_wav(tmp_path / "a.wav")
+        boneco = gif(tmp_path / "b.gif")
+        m = montagem.Montagem(fundo, pessoa=falando, audio=audio, fala="fundo")
+        assert (m.tipo_da_fala(), m.fonte_da_fala()) == ("fundo", fundo)
+        m = montagem.Montagem(fundo, pessoa=falando, audio=audio, fala="pessoa")
+        assert m.fonte_da_fala() == falando
+        m = montagem.Montagem(fundo, personagem=boneco, audio=audio, fala="audio")
+        assert (m.tipo_da_fala(), m.fonte_da_fala()) == ("audio", audio)
+        assert m.problemas() == []
+
+    def test_escolhas_que_nao_servem(self, tmp_path):
+        f = tmp_path / "f.mp4"
+        # com o personagem, o áudio só vem do fundo ou de um áudio separado
+        assert any("personagem" in e for e in
+                   montagem.Montagem(f, personagem=f, fala="pessoa").problemas())
+        assert any("nenhum arquivo" in e for e in
+                   montagem.Montagem(f, pessoa=f, fala="audio").problemas())
+        assert montagem.Montagem(f, pessoa=f, fala="microfone").problemas()
+
+
 # ── o quadro final ───────────────────────────────────────────────────────
 
 
