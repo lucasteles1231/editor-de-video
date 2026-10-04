@@ -18,16 +18,22 @@ type Props = {
   video: VideoInfo | null;
   situacaoDoRecorte: string;
   temAlvo: boolean;
+  /** Na montagem com personagem: ele já vem recortado, e não há quadro da pessoa. */
+  personagem?: boolean;
 };
 
-export const AbaPessoa: React.FC<Props> = ({config, mudar, video, situacaoDoRecorte, temAlvo}) => {
+export const AbaPessoa: React.FC<Props> = ({config, mudar, video, situacaoDoRecorte, temAlvo, personagem}) => {
   const mexida = config.pessoaDx !== 0 || config.pessoaDy !== 0 || config.pessoaEscala !== 1;
   return (
     <div className="aba">
-      <Interruptor ligado={config.recorte} aoMudar={(v) => mudar({recorte: v})} titulo="Recortar a pessoa"
-        descricao="Tira o fundo de quem fala. Roda no seu computador." />
+      {personagem ? (
+        <small>O personagem já vem sem fundo: ele fica no lugar da pessoa.</small>
+      ) : (
+        <Interruptor ligado={config.recorte} aoMudar={(v) => mudar({recorte: v})} titulo="Recortar a pessoa"
+          descricao="Tira o fundo de quem fala. Roda no seu computador." />
+      )}
       {situacaoDoRecorte ? <small>{situacaoDoRecorte}</small> : null}
-      {config.recorte ? (
+      {config.recorte || personagem ? (
         <>
           <small>Arraste a pessoa na prévia para mudar de lugar (ou use as setas do teclado).</small>
           <label className="campo">
@@ -69,7 +75,7 @@ export const AbaPessoa: React.FC<Props> = ({config, mudar, video, situacaoDoReco
           ))}
         </div>
       </div>
-      <label className="campo">
+      {personagem ? null : <label className="campo">
         <span>Quadro da pessoa: {duracao(config.t)}</span>
         <input type="range" min={0} max={Math.max(0.1, (video?.duracao ?? 1) - 0.1)} step={0.1}
           value={config.t} disabled={!video} onChange={(e) => mudar({t: Number(e.target.value)})} />
@@ -77,7 +83,7 @@ export const AbaPessoa: React.FC<Props> = ({config, mudar, video, situacaoDoReco
           onClick={() => video && api.quadroAutomatico(video.id).then((r) => mudar({t: r.t}))}>
           Escolher o mais nítido
         </button>
-      </label>
+      </label>}
     </div>
   );
 };

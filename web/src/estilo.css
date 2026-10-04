@@ -232,6 +232,47 @@ button, input, select, textarea { font: inherit; color: inherit; }
   transition: transform 0.15s ease, background 0.15s ease;
 }
 
+.envio.pequena { padding: 18px 14px; gap: 4px; border-width: 2px; }
+.envio.pequena strong { font-size: 16px; }
+
+/* ── a montagem em camadas ── */
+.modos { margin-bottom: 14px; }
+.camadas { display: grid; gap: 14px; }
+.camada {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 2px solid color-mix(in srgb, var(--linha) 18%, transparent);
+  background: var(--cartao);
+}
+.camada > strong { font-family: var(--titulo); font-size: 16px; }
+.camada > small, .camada .custo { color: var(--tinta-suave); }
+.personagem { display: grid; grid-template-columns: 96px 1fr; gap: 10px 14px; align-items: center; }
+.personagem img {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  border-radius: 10px;
+  /* o xadrez de quem tem transparência */
+  background: repeating-conic-gradient(color-mix(in srgb, var(--linha) 10%, transparent) 0% 25%,
+    transparent 0% 50%) 50% / 16px 16px;
+}
+.personagem .interruptor { grid-column: 1 / -1; }
+.tela-montada { position: relative; }
+.tela-montada .por-cima {
+  position: absolute;
+  right: 4%;
+  bottom: 14%;
+  height: 58%;
+  max-width: 48%;
+  object-fit: contain;
+  object-position: bottom;
+  pointer-events: none;
+  filter: drop-shadow(0 4px 10px rgb(0 0 0 / 35%));
+}
+.tela-montada.em-pe .por-cima { right: 50%; transform: translateX(50%); height: 50%; max-width: 80%; }
+
 .envio:hover, .envio.arrastando { background: color-mix(in srgb, var(--amarelo) 22%, var(--papel-2)); }
 .envio.arrastando { transform: scale(1.01) rotate(-0.4deg); }
 .envio strong { font-family: var(--titulo); font-size: 19px; }
@@ -593,18 +634,10 @@ button.link { padding: 0; border: none; background: none; color: inherit; font: 
 .ideia:hover { border-color: var(--linha); }
 .ideia[aria-pressed='true'] { border-color: var(--linha); box-shadow: 3px 3px 0 var(--linha); background: color-mix(in srgb, var(--amarelo) 22%, var(--cartao)); }
 .miniatura-ideia { border-radius: 8px; overflow: hidden; background: #1a1a1a; }
-.mover-pessoa { display: grid; gap: 12px; margin-top: 14px; padding: 14px 16px; border-radius: 12px;
-  border: 2px dashed color-mix(in srgb, var(--linha) 30%, transparent); }
-.mover-pessoa .custo { color: var(--tinta-suave); }
-
 .carregando-ideia { aspect-ratio: 16 / 9; background: color-mix(in srgb, var(--linha) 12%, transparent);
   animation: pulsar 1.2s ease-in-out infinite alternate; }
 @keyframes pulsar { from { opacity: 0.55; } to { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .mover-pessoa { display: grid; gap: 12px; margin-top: 14px; padding: 14px 16px; border-radius: 12px;
-  border: 2px dashed color-mix(in srgb, var(--linha) 30%, transparent); }
-.mover-pessoa .custo { color: var(--tinta-suave); }
-
-.carregando-ideia { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .carregando-ideia { animation: none; } }
 
 /* ── lateral: vídeo, botão, progresso, resultado ───────────────────── */
 

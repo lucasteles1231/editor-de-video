@@ -18,7 +18,9 @@ export const PROPORCAO: Record<string, string> = {'1280x720': '16:9', '1080x1920
 type Props = {
   config: ThumbConfig;
   mudar: (p: Partial<ThumbConfig>) => void;
+  /** O vídeo de onde sai a fonte "Vídeo" (na montagem, o vídeo de fundo). */
   video: VideoInfo | null;
+  montagem: boolean;
   pexels: EstadoChave;
   setPexels: (e: EstadoChave) => void;
   geracao: {restantes: number; teto: number};
@@ -26,7 +28,8 @@ type Props = {
   iaConfigurada: boolean;
 };
 
-export const AbaFundo: React.FC<Props> = ({config, mudar, video, pexels, setPexels, geracao, setGeracao, iaConfigurada}) => {
+export const AbaFundo: React.FC<Props> = ({config, mudar, video, montagem, pexels, setPexels, geracao, setGeracao,
+  iaConfigurada}) => {
   const origem = config.imagem?.origem;
   const inicial: Fonte = config.fundo === 'video' ? 'video' : config.fundo === 'cor' ? 'cor'
     : origem === 'pexels' ? 'pexels' : origem === 'gerada' ? 'gerar' : 'imagem';
@@ -78,9 +81,12 @@ export const AbaFundo: React.FC<Props> = ({config, mudar, video, pexels, setPexe
 
       {fonte === 'video' ? (
         <div className="campo">
-          <Interruptor ligado={config.fundoT === null} titulo="O mesmo quadro da pessoa"
-            descricao="Desligado, o fundo vem de outro momento do vídeo (uma tela, um produto, uma cena)."
-            aoMudar={(v) => mudar({fundoT: v ? null : config.t, foco: null})} />
+          <Interruptor ligado={config.fundoT === null}
+            titulo={montagem ? 'O mesmo momento do vídeo de fundo' : 'O mesmo quadro da pessoa'}
+            descricao={montagem ? 'Desligado, escolha outro momento do vídeo de fundo.'
+              : 'Desligado, o fundo vem de outro momento do vídeo (uma tela, um produto, uma cena).'}
+            aoMudar={(v) => mudar({fundoT: v ? null : Math.min(config.t, Math.max(0, (video?.duracao ?? 1) - 0.1)),
+              foco: null})} />
           {config.fundoT !== null && video ? (
             <label className="campo">
               <span>Quadro do fundo: {duracao(config.fundoT)}</span>

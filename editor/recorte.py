@@ -37,6 +37,9 @@ MULTIPLO = 32
 LIMIAR = 0.5
 #: Menos que isto do quadro não é uma pessoa: é o modelo achando gente numa parede.
 AREA_MINIMA = 0.02
+#: Uma parte ligada da máscara fica se tem pelo menos esta fração da maior (a cabeça
+#: separada do tronco fica; a mancha da mesa sai).
+PARTE_MINIMA = 0.08
 #: Abaixo disto o alfa é ruído e vira zero.
 ALFA_MINIMO = 0.12
 #: O rosto, quando ninguém disse onde ele está: a cabeça termina onde a silhueta
@@ -189,18 +192,31 @@ def regiao_da_pessoa(alfa: np.ndarray, folga: int = 1) -> np.ndarray | None:
     grade = alfa[::passo, ::passo] > LIMIAR
     if not grade.any():
         return None
-    # A semente é a célula mais cercada de pessoa; dali a região cresce, presa à máscara.
-    from numpy.lib.stride_tricks import sliding_window_view
-
-    densidade = sliding_window_view(np.pad(grade, 4), (9, 9)).sum(axis=(2, 3))
-    i, j = np.unravel_index(int(np.argmax(densidade)), densidade.shape)
+    # As partes ligadas grandes: a maior e as que têm pelo menos ``PARTE_MINIMA`` dela.
+    # Antes ficava só a parte da célula mais cercada de pessoa, e num empate ganhava a de
+    # cima: com a cabeça separada do tronco (o microfone na frente do pescoço), o tronco
+    # inteiro sumia. Uma mancha da mesa é bem menor que isso.
+    restante = grade.copy()
+    partes: list[tuple[int, np.ndarray]] = []
+    while restante.any():
+        i, j = np.unravel_index(int(np.argmax(restante)), restante.shape)
+        parte = np.zeros_like(grade)
+        parte[i, j] = True
+        while True:
+            cresce = _dilatar(parte) & restante
+            if np.array_equal(cresce, parte):
+                break
+            parte = cresce
+        partes.append((int(parte.sum()), parte))
+        restante &= ~parte
+        maior = max(n for n, _ in partes)
+        if int(restante.sum()) < PARTE_MINIMA * maior:
+            break                            # o que sobrou, junto, já é pequeno demais
+    maior = max(n for n, _ in partes)
     regiao = np.zeros_like(grade)
-    regiao[i, j] = True
-    while True:
-        cresce = _dilatar(regiao) & grade
-        if np.array_equal(cresce, regiao):
-            break
-        regiao = cresce
+    for n, parte in partes:
+        if n >= PARTE_MINIMA * maior:
+            regiao |= parte
     # Uma célula de folga em volta, para a borda macia (cabelo) não virar degrau.
     for _ in range(folga):
         regiao = _dilatar(regiao)

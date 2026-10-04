@@ -280,3 +280,109 @@ class TestOFundoDaThumbnail:
             r = cliente.get(f"/maos/{nome}")
             assert r.status_code == 200 and r.content
         assert cliente.get("/maos/..%2F..%2Fservidor.py").status_code == 404
+
+
+class TestAMontagem:
+    """O fundo e, por cima, a pessoa ou o personagem, pela API."""
+
+    def _enviar_arquivo(self, cliente, rota, caminho, tipo):
+        with open(caminho, "rb") as f:
+            return cliente.post(rota, headers=CABECA, files={"arquivo": (caminho.name, f, tipo)})
+
+    def test_personagem(self, cliente, tmp_path):
+        from tests.test_montagem import gif
+
+        r = self._enviar_arquivo(cliente, "/api/personagens", gif(tmp_path / "b.gif", lado=80),
+                                 "image/gif")
+        assert r.status_code == 200, r.text
+        p = r.json()
+        assert (p["quadros"], p["tem_alfa"], p["largura"]) == (4, True, 80)
+        quadro = cliente.get(f"/api/personagens/{p['id']}/quadro.png", headers=CABECA)
+        assert quadro.status_code == 200
+        with Image.open(io.BytesIO(quadro.content)) as im:
+            assert im.mode == "RGBA" and im.getpixel((0, 0))[3] == 0
+        caixas = cliente.get(f"/api/personagens/{p['id']}/recorte", headers=CABECA).json()
+        assert caixas["ok"] and 0 < caixas["pessoa"]["x0"] < 0.3
+
+    def test_personagem_de_fundo_de_cor(self, cliente, tmp_path):
+        from tests.test_montagem import gif
+
+        r = self._enviar_arquivo(cliente, "/api/personagens",
+                                 gif(tmp_path / "b.gif", transparente=False), "image/gif")
+        p = r.json()
+        assert (p["tem_alfa"], p["fundo_de_cor"]) == (False, True)
+        com_fundo = cliente.get(f"/api/personagens/{p['id']}/quadro.png?tirar_fundo=0",
+                                headers=CABECA)
+        sem_fundo = cliente.get(f"/api/personagens/{p['id']}/quadro.png?tirar_fundo=1",
+                                headers=CABECA)
+        with Image.open(io.BytesIO(com_fundo.content)) as a, \
+                Image.open(io.BytesIO(sem_fundo.content)) as b:
+            assert a.getpixel((0, 0))[3] == 255 and b.getpixel((0, 0))[3] == 0
+
+    def test_personagem_que_nao_e_imagem(self, cliente, tmp_path):
+        ruim = tmp_path / "x.gif"
+        ruim.write_bytes(b"nada")
+        r = self._enviar_arquivo(cliente, "/api/personagens", ruim, "image/gif")
+        assert r.status_code == 400 and "GIF" in r.json()["detail"]
+
+    def test_audio(self, cliente, tmp_path):
+        from tests.test_montagem import audio_wav
+
+        r = self._enviar_arquivo(cliente, "/api/audios", audio_wav(tmp_path / "n.wav",
+                                                                   segundos=2.0), "audio/wav")
+        assert r.status_code == 200 and r.json()["duracao"] == pytest.approx(2.0, abs=0.05)
+        sem_som = fazer_video(tmp_path / "mudo.mp4", com_audio=False)
+        r = self._enviar_arquivo(cliente, "/api/audios", sem_som, "video/mp4")
+        assert r.status_code == 400
+
+    def test_video_com_transparencia(self, cliente, tmp_path):
+        from tests.test_montagem import video_com_alfa
+
+        assert _enviar(cliente, video_com_alfa(tmp_path / "eu.mov"))["tem_alfa"]
+        assert not _enviar(cliente, fazer_video(tmp_path / "v.mp4"))["tem_alfa"]
+
+    def test_recorte_pelo_alfa_do_arquivo(self, cliente, tmp_path, monkeypatch):
+        """O vídeo já sem fundo não passa pelo MODNet: o recorte é o alfa dele."""
+        from tests.test_montagem import video_com_alfa
+
+        monkeypatch.setattr(recorte, "recortar", lambda m: (_ for _ in ()).throw(
+            AssertionError("não devia chamar o modelo")))
+        v = _enviar(cliente, video_com_alfa(tmp_path / "eu.mov"))
+        info = cliente.get(f"/api/videos/{v['id']}/recorte?segundo=0.3", headers=CABECA).json()
+        assert info["ok"] and info["pessoa"]["y1"] > 0.95
+
+    def test_edita_a_montagem_e_pede_ideias(self, cliente, tmp_path):
+        from tests.test_montagem import audio_wav, gif
+
+        fundo = _enviar(cliente, fazer_video(tmp_path / "tela.mp4", largura=320, altura=180,
+                                             segundos=3.0, com_audio=False))
+        boneco = self._enviar_arquivo(cliente, "/api/personagens", gif(tmp_path / "b.gif"),
+                                      "image/gif").json()
+        narracao = self._enviar_arquivo(cliente, "/api/audios",
+                                        audio_wav(tmp_path / "n.wav", segundos=4.0),
+                                        "audio/wav").json()
+        pedido = {"montagem": {"fundo_id": fundo["id"], "personagem_id": boneco["id"],
+                               "audio_id": narracao["id"], "formato": "vertical"},
+                  "edicao": {}, "saida": {}}
+        r = cliente.post("/api/tarefas", headers=CABECA, json=pedido)
+        assert r.status_code == 200, r.text
+        t = _esperar(cliente, r.json()["id"])
+        assert t["estado"] == "pronto", t
+        assert (t["resultado"]["largura"], t["resultado"]["altura"]) == (180, 320)
+        assert t["resultado"]["video"].endswith("tela-editado.mp4")
+        ideias = cliente.post(f"/api/tarefas/{t['id']}/thumbs-ia", headers=CABECA, json={})
+        assert ideias.status_code == 200 and len(ideias.json()["variantes"]) == 3
+
+    def test_transparente_sem_alfa_e_recusado(self, cliente, tmp_path):
+        fundo = _enviar(cliente, fazer_video(tmp_path / "tela.mp4"))
+        pessoa = _enviar(cliente, fazer_video(tmp_path / "eu.mp4"))
+        pedido = {"montagem": {"fundo_id": fundo["id"], "pessoa_id": pessoa["id"],
+                               "recorte": "transparente"}, "edicao": {}, "saida": {}}
+        r = cliente.post("/api/tarefas", headers=CABECA, json=pedido)
+        assert r.status_code == 422 and "transparência" in r.json()["detail"]
+
+    def test_montagem_sem_nada_por_cima(self, cliente, tmp_path):
+        fundo = _enviar(cliente, fazer_video(tmp_path / "tela.mp4"))
+        r = cliente.post("/api/tarefas", headers=CABECA,
+                         json={"montagem": {"fundo_id": fundo["id"]}, "edicao": {}, "saida": {}})
+        assert r.status_code == 422

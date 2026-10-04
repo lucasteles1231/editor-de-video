@@ -13,9 +13,8 @@ export type Edicao = {
   tamanho_legenda: number;
   idioma: string;
   modelo: string;
-  mover_pessoa: boolean;
-  fundo_da_pessoa: 'video' | 'cor';
-  cor_do_fundo: Cor;
+  /** Na montagem em camadas, a pessoa (ou o personagem) muda de lugar em alguns cortes. */
+  mover: boolean;
 };
 
 export type Saida = {
@@ -57,7 +56,29 @@ export type VideoInfo = {
   duracao: number;
   vertical: boolean;
   tem_audio: boolean;
+  /** O vídeo já vem sem fundo (WebM VP9 ou MOV com transparência). */
+  tem_alfa: boolean;
 };
+
+/** Como é o vídeo: um só, com a pessoa falando; ou um fundo e, por cima, a pessoa ou um
+ *  personagem animado. */
+export type Modo = 'um' | 'montagem';
+export type PorCima = 'pessoa' | 'personagem';
+export type FormatoDoQuadro = 'fundo' | 'vertical' | 'horizontal' | 'quadrado';
+export type MontagemConfig = {
+  porCima: PorCima;
+  /** Como tirar o fundo da pessoa: o alfa do arquivo, ou o MODNet. */
+  recorte: 'transparente' | 'modnet';
+  formato: FormatoDoQuadro;
+  tirarFundo: boolean;
+};
+
+export type PersonagemInfo = {
+  id: string; nome: string; tamanho_bytes: number; largura: number; altura: number;
+  quadros: number; duracao: number; tem_alfa: boolean; fundo_de_cor: boolean;
+};
+
+export type AudioInfo = {id: string; nome: string; tamanho_bytes: number; duracao: number};
 
 export type Resultado = {
   video: string;
@@ -192,6 +213,13 @@ export type EstadoIa = {configurada: boolean; origem: string; final: string; fal
 export type EstadoChave = {configurada: boolean; origem: string; final: string};
 
 export type RecorteInfo = {ok: boolean; pessoa: Caixa | null; rosto: Caixa | null};
+
+/** As camadas da thumbnail na montagem: o vídeo de fundo (para a fonte "Vídeo") e, no lugar
+ *  da pessoa recortada, o personagem. */
+export type Camadas = {
+  fundo: VideoInfo | null;
+  personagem: {info: PersonagemInfo; recorte: RecorteInfo | null; tirarFundo: boolean} | null;
+};
 
 export type FotoPexels = {
   id: number; largura: number; altura: number; autor: string; autor_url: string; pagina: string;

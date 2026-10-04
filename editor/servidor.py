@@ -36,7 +36,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 
-from editor import __version__, ia, icones, imagens, pexels, recorte, transcricao
+from editor import __version__, ia, icones, imagens, montagem, pexels, recorte, transcricao
 from editor import saida as saida_mod
 from editor import video as video_mod
 from editor.opcoes import OpcoesDeEdicao
@@ -111,17 +111,23 @@ def nitidez(matriz: np.ndarray) -> float:
 
 
 def quadros_candidatos(caminho: Path, info: video_mod.Info, n: int = ia.QUADROS,
-                       lado: int = ia.LADO_DO_QUADRO) -> list[tuple[float, bytes]]:
+                       lado: int = ia.LADO_DO_QUADRO, *, alfa: bool = False
+                       ) -> list[tuple[float, bytes]]:
     """Os ``n`` quadros para o Gemini olhar: os mais nítidos entre 24 amostras, espalhados
-    pelo vídeo, em JPEG pequeno. Em ordem de tempo."""
+    pelo vídeo, em JPEG pequeno. Em ordem de tempo. Com ``alfa`` (a pessoa já sem fundo),
+    ela vai sobre um cinza: atrás dela, o arquivo pode ter qualquer coisa."""
     dur = max(0.1, info.duracao)
     amostras = []
     for k in range(24):
         t = dur * (0.05 + 0.9 * k / 23)
-        m = video_mod.quadro_em(caminho, t, info.rotacao)
+        m = video_mod.quadro_em(caminho, t, info.rotacao, alfa=alfa)
         if m is None:
             continue
-        img = Image.fromarray(m)
+        if m.shape[2] == 4:
+            cinza = Image.new("RGBA", (m.shape[1], m.shape[0]), (128, 128, 128, 255))
+            img = Image.alpha_composite(cinza, Image.fromarray(m, "RGBA")).convert("RGB")
+        else:
+            img = Image.fromarray(m)
         pequeno = np.asarray(img.resize((320, max(1, round(320 * img.height / img.width)))))
         amostras.append((nitidez(pequeno.astype(np.float32)), t, img))
     escolhidos: list[tuple[float, Image.Image]] = []
@@ -169,6 +175,8 @@ def criar_app(token: str, *, porta: int, pasta_saida: Path | None = None,
     imagens.limpar_antigas()
     saida_base = pasta_saida or pasta_de_saida_padrao()
     videos: dict[str, dict] = {}
+    personagens: dict[str, dict] = {}
+    audios: dict[str, dict] = {}
     recortes: dict[tuple[str, float], tuple[np.ndarray, recorte.Recorte]] = {}
     trava_dos_recortes = threading.Lock()
     hosts = {f"127.0.0.1:{porta}", f"localhost:{porta}"}
@@ -191,6 +199,16 @@ def criar_app(token: str, *, porta: int, pasta_saida: Path | None = None,
         if vid not in videos:
             raise HTTPException(404, "vídeo não encontrado — envie de novo")
         return videos[vid]
+
+    def _personagem(pid: str) -> dict:
+        if pid not in personagens:
+            raise HTTPException(404, "personagem não encontrado — envie de novo")
+        return personagens[pid]
+
+    def _audio(aid: str) -> dict:
+        if aid not in audios:
+            raise HTTPException(404, "áudio não encontrado — envie de novo")
+        return audios[aid]
 
     def _tarefa(tid: str) -> Tarefa:
         if tid not in gerente.tarefas:
@@ -344,11 +362,81 @@ def criar_app(token: str, *, porta: int, pasta_saida: Path | None = None,
         except Exception as erro:
             shutil.rmtree(pasta, ignore_errors=True)
             raise HTTPException(400, f"não consegui ler este vídeo: {erro}") from erro
-        videos[vid] = {"caminho": destino, "info": info, "nome": destino.name}
+        alfa = video_mod.tem_alfa(destino)
+        videos[vid] = {"caminho": destino, "info": info, "nome": destino.name, "tem_alfa": alfa}
         return {"id": vid, "nome": destino.name, "tamanho_bytes": destino.stat().st_size,
                 "largura": info.largura, "altura": info.altura, "fps": float(info.fps),
                 "duracao": round(info.duracao, 2), "vertical": info.vertical,
-                "tem_audio": info.tem_audio}
+                "tem_audio": info.tem_audio, "tem_alfa": alfa}
+
+    # ── a montagem em camadas: o personagem e a narração à parte ──────────
+
+    def _guardar(arquivo: UploadFile, padrao: str) -> tuple[str, Path]:
+        uid = uuid.uuid4().hex[:12]
+        pasta = envios / uid
+        pasta.mkdir(parents=True)
+        destino = pasta / _nome_seguro(arquivo.filename or padrao)
+        with destino.open("wb") as f:
+            shutil.copyfileobj(arquivo.file, f, length=1024 * 1024)
+        return uid, destino
+
+    def _carregar_personagem(pid: str, tirar_fundo: bool) -> montagem.Personagem:
+        """O personagem lido (guardado em memória: ler um GIF grande leva um tempo)."""
+        p = _personagem(pid)
+        chave_ = "lido" if tirar_fundo else "lido_com_fundo"
+        if chave_ not in p:
+            p[chave_] = montagem.ler_personagem(p["caminho"], tirar_fundo=tirar_fundo,
+                                                lado_maximo=720)
+        return p[chave_]
+
+    @app.post("/api/personagens")
+    def enviar_personagem(arquivo: Annotated[UploadFile, File()]):
+        pid, destino = _guardar(arquivo, "personagem.gif")
+        try:
+            lido = montagem.ler_personagem(destino, tirar_fundo=False, lado_maximo=720)
+        except montagem.PersonagemInvalido as erro:
+            shutil.rmtree(destino.parent, ignore_errors=True)
+            raise HTTPException(400, str(erro)) from erro
+        personagens[pid] = {"caminho": destino, "nome": destino.name,
+                            "tem_alfa": lido.tem_alfa, "lido_com_fundo": lido}
+        with Image.open(destino) as im:
+            largura, altura = im.size
+        return {"id": pid, "nome": destino.name, "tamanho_bytes": destino.stat().st_size,
+                "largura": largura, "altura": altura, "quadros": len(lido.quadros),
+                "duracao": round(lido.duracao, 2), "tem_alfa": lido.tem_alfa,
+                "fundo_de_cor": montagem.cor_do_fundo(lido.quadros[0]) is not None}
+
+    @app.get("/api/personagens/{pid}/quadro.png")
+    def quadro_do_personagem(pid: str, tirar_fundo: int = 1, quadro: int = 0):
+        lido = _carregar_personagem(pid, bool(tirar_fundo))
+        q = lido.quadros[min(max(quadro, 0), len(lido.quadros) - 1)]
+        buf = io.BytesIO()
+        Image.fromarray(q, "RGBA").save(buf, "PNG")
+        return Response(buf.getvalue(), media_type="image/png",
+                        headers={"Cache-Control": "max-age=3600"})
+
+    @app.get("/api/personagens/{pid}/arquivo")
+    def arquivo_do_personagem(pid: str):
+        return FileResponse(_personagem(pid)["caminho"])
+
+    @app.get("/api/personagens/{pid}/recorte")
+    def recorte_do_personagem(pid: str, tirar_fundo: int = 1):
+        camada = montagem.CamadaDePersonagem(_carregar_personagem(pid, bool(tirar_fundo)))
+        return {"ok": True, "pessoa": camada.pessoa.para_dict(), "rosto": camada.rosto.para_dict(),
+                "largura": camada.largura, "altura": camada.altura}
+
+    @app.post("/api/audios")
+    def enviar_audio(arquivo: Annotated[UploadFile, File()]):
+        aid, destino = _guardar(arquivo, "narracao.m4a")
+        try:
+            duracao = video_mod.duracao_do_audio(destino)
+        except Exception as erro:
+            shutil.rmtree(destino.parent, ignore_errors=True)
+            raise HTTPException(400, "Não achei áudio neste arquivo. Use MP3, WAV ou M4A."
+                                ) from erro
+        audios[aid] = {"caminho": destino, "nome": destino.name, "duracao": duracao}
+        return {"id": aid, "nome": destino.name, "tamanho_bytes": destino.stat().st_size,
+                "duracao": round(duracao, 2)}
 
     @app.get("/api/videos/{vid}/arquivo")
     def video_original(vid: str):
@@ -398,9 +486,21 @@ def criar_app(token: str, *, porta: int, pasta_saida: Path | None = None,
             if chave_ in recortes:
                 recortes[chave_] = recortes.pop(chave_)          # o mais recente no fim
                 return recortes[chave_]
-        matriz = video_mod.quadro_em(v["caminho"], segundo, v["info"].rotacao)
+        matriz = video_mod.quadro_em(v["caminho"], segundo, v["info"].rotacao,
+                                     alfa=v.get("tem_alfa", False))
         if matriz is None:
             raise HTTPException(404, "sem quadro nesse instante")
+        if matriz.shape[2] == 4:
+            # O vídeo já vem sem fundo: o alfa do próprio arquivo, sem modelo nenhum.
+            alfa = matriz[..., 3].astype(np.float32) / 255.0
+            matriz = np.ascontiguousarray(matriz[..., :3])
+            r = recorte.Recorte((np.clip(alfa, 0, 1) * 255).astype(np.uint8),
+                                *recorte.caixas(alfa))
+            with trava_dos_recortes:
+                recortes[chave_] = (matriz, r)
+                while len(recortes) > RECORTES_GUARDADOS:
+                    recortes.pop(next(iter(recortes)))
+            return matriz, r
         try:
             r = recorte.recortar(matriz)
         except Exception as erro:
@@ -428,10 +528,40 @@ def criar_app(token: str, *, porta: int, pasta_saida: Path | None = None,
         return Response(dados, media_type="image/png",
                         headers={"Cache-Control": "max-age=3600"})
 
+    def _montagem(pedido: dict) -> tuple[montagem.Montagem, Path, str]:
+        """A montagem pedida pela página, o vídeo da thumbnail e o nome da saída."""
+        fundo = _video(str(pedido.get("fundo_id", "")))
+        pessoa = personagem = audio = None
+        if pedido.get("pessoa_id"):
+            pessoa = _video(str(pedido["pessoa_id"]))
+        if pedido.get("personagem_id"):
+            personagem = _personagem(str(pedido["personagem_id"]))
+        if pedido.get("audio_id"):
+            audio = _audio(str(pedido["audio_id"]))
+        recorte_ = str(pedido.get("recorte") or "modnet")
+        if pessoa is not None and recorte_ == "transparente" and not pessoa.get("tem_alfa"):
+            raise HTTPException(422, "Este vídeo da pessoa não tem transparência: escolha "
+                                     "recortar com o MODNet.")
+        m = montagem.Montagem(
+            fundo["caminho"], pessoa=pessoa["caminho"] if pessoa else None,
+            personagem=personagem["caminho"] if personagem else None,
+            audio=audio["caminho"] if audio else None, recorte=recorte_,
+            formato=str(pedido.get("formato") or "fundo"),
+            tirar_fundo_do_personagem=bool(pedido.get("tirar_fundo_do_personagem", True)))
+        erros = m.problemas()
+        if erros:
+            raise HTTPException(422, "; ".join(erros))
+        return m, (pessoa or fundo)["caminho"], fundo["nome"]
+
     @app.post("/api/tarefas")
     async def criar_tarefa(request: Request):
         dados = await request.json()
-        v = _video(str(dados.get("video_id", "")))
+        m = None
+        if dados.get("montagem"):
+            m, video_da_thumb, nome = _montagem(dados["montagem"])
+        else:
+            v = _video(str(dados.get("video_id", "")))
+            video_da_thumb, nome = v["caminho"], v["nome"]
         edicao = OpcoesDeEdicao.de_dict(dados.get("edicao") or {})
         saida = saida_mod.OpcoesDeSaida.de_dict(dados.get("saida") or {})
         erros = edicao.problemas() + saida.problemas()
@@ -439,10 +569,10 @@ def criar_app(token: str, *, porta: int, pasta_saida: Path | None = None,
             raise HTTPException(422, "; ".join(erros))
         previa = dados.get("previa_s")
         saida_base.mkdir(parents=True, exist_ok=True)
-        destino = _livre(saida_base / f"{Path(v['nome']).stem}-editado.{saida.formato}")
+        destino = _livre(saida_base / f"{Path(nome).stem}-editado.{saida.formato}")
         try:
-            t = gerente.iniciar(Tarefa(v["caminho"], destino, edicao, saida,
-                                       float(previa) if previa else None))
+            t = gerente.iniciar(Tarefa(video_da_thumb, destino, edicao, saida,
+                                       float(previa) if previa else None, montagem=m))
         except Ocupado as erro:
             raise HTTPException(409, "já há uma edição rodando") from erro
         return t.para_dict()
@@ -525,13 +655,31 @@ def criar_app(token: str, *, porta: int, pasta_saida: Path | None = None,
         if t.estado != "pronto" or not t.resultado:
             raise HTTPException(409, "a edição ainda não terminou")
         evitar = [str(c)[:60] for c in (dados or {}).get("evitar", [])][:12]
-        info = video_mod.sondar(t.video)
-        quadros = quadros_candidatos(t.video, info)
+        m = t.montagem
+        origens = None
+        if m is None:
+            info = video_mod.sondar(t.video)
+            quadros = quadros_candidatos(t.video, info)
+            duracao, vertical = info.duracao, info.vertical
+        else:
+            # Na montagem, os quadros vêm das duas camadas: 4 da pessoa e 4 do fundo (com
+            # o personagem, que não está em vídeo nenhum, os 8 são do fundo).
+            info_do_fundo = video_mod.sondar(m.fundo)
+            da_pessoa = []
+            if m.pessoa is not None:
+                da_pessoa = quadros_candidatos(m.pessoa, video_mod.sondar(m.pessoa), n=4,
+                                               alfa=m.recorte == "transparente")
+            do_fundo = quadros_candidatos(m.fundo, info_do_fundo,
+                                          n=ia.QUADROS - len(da_pessoa))
+            quadros = da_pessoa + do_fundo
+            origens = ["pessoa"] * len(da_pessoa) + ["fundo"] * len(do_fundo)
+            duracao = float(t.resultado.get("duracao_original") or info_do_fundo.duracao)
+            vertical = int(t.resultado.get("altura", 0)) > int(t.resultado.get("largura", 0))
         try:
             return ia.sugerir(fala_do_plano(Path(t.resultado["plano"])), quadros,
-                              idioma=t.edicao.idioma, duracao=info.duracao,
-                              vertical=info.vertical, nomes_de_icones=icones.nomes(),
-                              evitar=evitar)
+                              idioma=t.edicao.idioma, duracao=duracao,
+                              vertical=vertical, nomes_de_icones=icones.nomes(),
+                              evitar=evitar, origens=origens)
         except ia.ErroDaIA as erro:
             raise HTTPException(502, str(erro)) from erro
 

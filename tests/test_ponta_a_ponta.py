@@ -126,8 +126,9 @@ class TestNoTerminal:
 
 
 
-class TestAPessoaQueMudaDeLugar:
-    """Com o recorte falso: a silhueta de busto no meio do quadro."""
+class TestAMontagem:
+    """O fundo e, por cima, a pessoa ou o personagem. O recorte e a transcrição são os
+    falsos (conftest)."""
 
     def _quadro(self, caminho, t: float):
         with av.open(str(caminho)) as c:
@@ -136,47 +137,96 @@ class TestAPessoaQueMudaDeLugar:
                     return fr.to_ndarray(format="rgb24").astype(int)
         raise AssertionError(f"sem quadro em {t}")
 
-    def test_edita_com_a_pessoa_saindo_do_lugar(self, tmp_path):
+    def test_personagem_com_audio_a_parte_em_pe(self, tmp_path):
         import json
 
-        entrada = fazer_video(tmp_path / "e.mp4", segundos=14.0)
-        parado = render.editar(entrada, tmp_path / "parado.mp4", OpcoesDeEdicao(),
-                               saida.OpcoesDeSaida())
-        movido = render.editar(entrada, tmp_path / "movido.mp4",
-                               OpcoesDeEdicao(mover_pessoa=True), saida.OpcoesDeSaida())
-        movimentos = json.loads(movido.plano.read_text(encoding="utf-8"))["movimentos"]
-        assert movimentos, "nenhum movimento num vídeo de 14 s"
+        from editor.montagem import Montagem
+        from tests.test_montagem import audio_wav, gif
+
+        fundo = fazer_video(tmp_path / "tela.mp4", largura=320, altura=180, segundos=6.0,
+                            com_audio=False)
+        m = Montagem(fundo, personagem=gif(tmp_path / "b.gif", lado=80),
+                     audio=audio_wav(tmp_path / "n.wav", segundos=14.0,
+                                     falas=((0.3, 3.0), (4.2, 7.5), (8.6, 13.5))),
+                     formato="vertical")
+        r = render.editar(None, tmp_path / "s.mp4", OpcoesDeEdicao(), saida.OpcoesDeSaida(),
+                          montagem=m)
+        info = ler_info(r.video)
+        assert (info["largura"], info["altura"]) == (180, 320)
+        assert info["audio"] == ["aac"]
+        # a fala manda: o vídeo tem a duração da narração cortada, não a do fundo
+        assert r.duracao_original == pytest.approx(14.0, abs=0.1)
+        assert info["duracao"] == pytest.approx(r.duracao_final, abs=0.12)
+        assert r.duracao_final > 6.0                      # o fundo de 6 s deu a volta
+        movimentos = json.loads(r.plano.read_text(encoding="utf-8"))["movimentos"]
+        assert movimentos, "o personagem não saiu do lugar nenhuma vez"
+
+    def test_pessoa_com_alfa_e_mexendo(self, tmp_path):
+        from editor.montagem import Montagem
+        from tests.test_montagem import video_com_alfa
+
+        fundo = fazer_video(tmp_path / "tela.mp4", largura=320, altura=180, segundos=14.0)
+        pessoa = video_com_alfa(tmp_path / "eu.mov", segundos=14.0)
+        m = Montagem(fundo, pessoa=pessoa, recorte="transparente")
+        parado = render.editar(None, tmp_path / "parado.mp4", OpcoesDeEdicao(mover=False),
+                               saida.OpcoesDeSaida(), montagem=m)
+        movido = render.editar(None, tmp_path / "movido.mp4", OpcoesDeEdicao(),
+                               saida.OpcoesDeSaida(), montagem=m)
+        import json
+
         info = ler_info(movido.video)
-        assert info["duracao"] == pytest.approx(movido.duracao_final, abs=0.12)
-        m = movimentos[0]
-        meio = (m["inicio"] + m["fim"]) / 2
+        assert (info["largura"], info["altura"]) == (320, 180)    # o formato do fundo
+        mov = json.loads(movido.plano.read_text(encoding="utf-8"))["movimentos"]
+        assert mov
+        meio = (mov[0]["inicio"] + mov[0]["fim"]) / 2
         diferenca = np.abs(self._quadro(movido.video, meio) - self._quadro(parado.video, meio))
-        assert diferenca.mean() > 8, "o quadro do movimento saiu igual ao parado"
-        # fora dos movimentos, nada muda
-        antes = max(0.0, m["inicio"] - 0.5)
+        assert diferenca.mean() > 3, "o quadro do movimento saiu igual ao parado"
+        antes = max(0.0, mov[0]["inicio"] - 0.5)
         diferenca = np.abs(self._quadro(movido.video, antes) - self._quadro(parado.video, antes))
         assert diferenca.mean() < 2
 
-    def test_sem_o_modelo_a_edicao_sai_com_a_pessoa_parada(self, tmp_path, monkeypatch):
+    def test_pessoa_recortada_pelo_modnet(self, tmp_path):
+        from editor.montagem import Montagem
+
+        fundo = fazer_video(tmp_path / "tela.mp4", largura=320, altura=180, segundos=3.0)
+        pessoa = fazer_video(tmp_path / "eu.mp4", largura=180, altura=320, segundos=3.0)
+        m = Montagem(fundo, pessoa=pessoa, recorte="modnet", formato="quadrado")
+        r = render.editar(None, tmp_path / "s.mp4", OpcoesDeEdicao(), saida.OpcoesDeSaida(),
+                          montagem=m)
+        info = ler_info(r.video)
+        assert (info["largura"], info["altura"]) == (180, 180)
+
+    def test_sem_o_modelo_avisa_o_que_fazer(self, tmp_path, monkeypatch):
         from editor import recorte
+        from editor.montagem import Montagem
 
         monkeypatch.setattr(recorte, "preparar_modelo", lambda: False)
-        avisos = []
-        entrada = fazer_video(tmp_path / "e.mp4", segundos=14.0)
-        r = render.editar(entrada, tmp_path / "s.mp4", OpcoesDeEdicao(mover_pessoa=True),
-                          saida.OpcoesDeSaida(),
-                          progresso=lambda etapa, f, detalhe: avisos.append(detalhe))
-        assert r.video.is_file()
-        assert any("a pessoa fica no lugar" in a for a in avisos)
+        fundo = fazer_video(tmp_path / "tela.mp4", segundos=2.0)
+        m = Montagem(fundo, pessoa=fazer_video(tmp_path / "eu.mp4", segundos=2.0))
+        with pytest.raises(RuntimeError, match="sem fundo"):
+            render.editar(None, tmp_path / "s.mp4", OpcoesDeEdicao(), saida.OpcoesDeSaida(),
+                          montagem=m)
 
     def test_no_terminal(self, tmp_path, monkeypatch):
         from editor import cli
+        from tests.test_montagem import gif, video_com_alfa
 
         pedidos = []
-        monkeypatch.setattr(render, "editar", lambda entrada, destino, edicao, saida_, **kw:
-                            pedidos.append(edicao) or render.Resultado(destino, destino))
-        video = fazer_video(tmp_path / "e.mp4", segundos=1.0)
-        assert cli.main([str(video), "--mover-pessoa", "--fundo-da-pessoa", "cor",
-                         "--cor-do-fundo", "lima"]) == 0
-        assert (pedidos[0].mover_pessoa, pedidos[0].fundo_da_pessoa,
-                pedidos[0].cor_do_fundo) == (True, "cor", "lima")
+
+        def editar(entrada, destino, edicao, saida_, **kw):
+            pedidos.append((entrada, destino, edicao, kw.get("montagem")))
+            return render.Resultado(destino, destino)
+
+        monkeypatch.setattr(render, "editar", editar)
+        fundo = fazer_video(tmp_path / "tela.mp4", segundos=1.0)
+        boneco = gif(tmp_path / "b.gif")
+        assert cli.main(["--fundo", str(fundo), "--personagem", str(boneco),
+                         "--quadro", "vertical", "--parada"]) == 0
+        entrada, destino, edicao, m = pedidos[-1]
+        assert entrada is None and destino.name == "tela-editado.mp4"
+        assert (m.personagem, m.formato, edicao.mover) == (boneco, "vertical", False)
+        # o vídeo do argumento vira a pessoa; com alfa, o recorte é o do arquivo
+        eu = video_com_alfa(tmp_path / "eu.mov")
+        assert cli.main([str(eu), "--fundo", str(fundo)]) == 0
+        assert (pedidos[-1][3].pessoa, pedidos[-1][3].recorte) == (eu, "transparente")
+        assert cli.main(["--pessoa", str(eu)]) == 2          # sem --fundo

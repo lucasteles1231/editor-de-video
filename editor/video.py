@@ -6,6 +6,12 @@ dizendo quanto girar na hora de mostrar. O PyAV entrega o quadro sem girar e o �
 em ``frame.rotation`` (graus no sentido anti-horário); aqui o quadro é endireitado
 com ``np.rot90`` — o mesmo resultado que o ``ffmpeg`` mostra, conferido nos dois
 sentidos (+90 e −90).
+
+**Vídeo com transparência** (a pessoa já sem fundo): o MOV com ProRes 4444, PNG ou
+Animation sai com alfa do decodificador de sempre. O WebM VP9 guarda o alfa à parte, e o
+decodificador nativo do FFmpeg joga ele fora; só o ``libvpx-vp9``, escolhido à mão e
+alimentado com os pacotes do contêiner, devolve ``yuva420p``. O arquivo avisa que tem
+alfa pela tag ``alpha_mode``. Conferido com arquivos gerados pelo próprio PyAV.
 """
 from __future__ import annotations
 
@@ -67,39 +73,154 @@ def sondar(caminho: Path) -> Info:
                     bool(c.streams.audio), rotacao)
 
 
-def quadros(caminho: Path, rotacao: int = 0) -> Iterator[tuple[float, np.ndarray]]:
-    """Cada quadro como (instante em segundos, matriz RGB), já endireitado."""
+def _alfa_no_vp9(stream) -> bool:
+    return (stream.codec_context.name == "vp9"
+            and str(stream.metadata.get("alpha_mode", "")).strip() == "1")
+
+
+def tem_alfa(caminho: Path) -> bool:
+    """Se o vídeo tem transparência (a pessoa já vem sem fundo)."""
+    try:
+        with av.open(str(caminho)) as c:
+            if not c.streams.video:
+                return False
+            s = c.streams.video[0]
+            if s.codec_context.name == "vp9":
+                return _alfa_no_vp9(s)
+            nome = s.codec_context.pix_fmt
+            if not nome:
+                for quadro in c.decode(s):
+                    nome = quadro.format.name
+                    break
+            if not nome:
+                return False
+            return any(comp.is_alpha for comp in av.video.format.VideoFormat(nome).components)
+    except (av.error.FFmpegError, ValueError, OSError):
+        return False
+
+
+def quadros(caminho: Path, rotacao: int = 0, *, alfa: bool = False
+            ) -> Iterator[tuple[float, np.ndarray]]:
+    """Cada quadro como (instante em segundos, matriz RGB ou RGBA), já endireitado."""
     k = _giro(rotacao)
+    formato = "rgba" if alfa else "rgb24"
     with av.open(str(caminho)) as c:
         stream = c.streams.video[0]
+        if alfa and _alfa_no_vp9(stream):
+            yield from _quadros_do_vp9_com_alfa(c, stream, k)
+            return
         stream.thread_type = "AUTO"
         for quadro in c.decode(stream):
             if quadro.time is None:
                 continue
-            matriz = quadro.to_ndarray(format="rgb24")
+            matriz = quadro.to_ndarray(format=formato)
             if k:
                 matriz = np.ascontiguousarray(np.rot90(matriz, k=k))
             yield float(quadro.time), matriz
 
 
-def quadro_em(caminho: Path, t: float, rotacao: int = 0) -> np.ndarray | None:
-    """Um quadro perto do instante ``t`` (para escolher a thumbnail)."""
+def _quadros_do_vp9_com_alfa(c, stream, k: int) -> Iterator[tuple[float, np.ndarray]]:
+    ctx = av.CodecContext.create("libvpx-vp9", "r")
+    if stream.codec_context.extradata:
+        ctx.extradata = stream.codec_context.extradata
+    base = stream.time_base
+    for pacote in c.demux(stream):
+        for quadro in ctx.decode(pacote):
+            if quadro.pts is None:
+                continue
+            matriz = quadro.to_ndarray(format="rgba")
+            if k:
+                matriz = np.ascontiguousarray(np.rot90(matriz, k=k))
+            yield float(quadro.pts * base), matriz
+
+
+class Cursor:
+    """Os quadros de um vídeo pedidos em ordem de tempo.
+
+    ``em(t)`` devolve o último quadro com tempo até ``t``, decodificando só para frente.
+    Quando o vídeo acaba antes do pedido, ele volta ao começo: na montagem, um fundo ou
+    uma pessoa mais curtos que a fala ficam em loop, e não congelados.
+    """
+
+    def __init__(self, caminho: Path, rotacao: int = 0, *, alfa: bool = False,
+                 duracao: float | None = None):
+        self.caminho, self.rotacao, self.alfa = Path(caminho), rotacao, alfa
+        self.duracao = duracao if duracao is not None else sondar(self.caminho).duracao
+        self._abrir()
+
+    def _abrir(self) -> None:
+        antigo = getattr(self, "_gerador", None)
+        if antigo is not None:
+            antigo.close()                     # fecha o arquivo da volta anterior
+        self._gerador = quadros(self.caminho, self.rotacao, alfa=self.alfa)
+        self._atual: tuple[float, np.ndarray] | None = None
+        self._proximo = next(self._gerador, None)
+        self._ultimo_pedido = -1.0
+
+    def em(self, t: float) -> np.ndarray | None:
+        if self.duracao > 0 and t >= self.duracao:
+            t = t % self.duracao
+        if t < self._ultimo_pedido:
+            self._abrir()                      # deu a volta: começa de novo
+        self._ultimo_pedido = t
+        while self._proximo is not None and (self._atual is None or self._proximo[0] <= t):
+            self._atual = self._proximo
+            self._proximo = next(self._gerador, None)
+            if self._atual[0] >= t:
+                break
+        return None if self._atual is None else self._atual[1]
+
+    def fechar(self) -> None:
+        self._gerador.close()
+
+
+def duracao_do_audio(caminho: Path) -> float:
+    """A duração de um arquivo com áudio (MP3, WAV, M4A ou um vídeo)."""
+    with av.open(str(caminho)) as c:
+        if not c.streams.audio:
+            raise ValueError("o arquivo não tem áudio")
+        s = c.streams.audio[0]
+        if c.duration:
+            return c.duration / av.time_base
+        if s.duration and s.time_base:
+            return float(s.duration * s.time_base)
+        return 0.0
+
+
+def quadro_em(caminho: Path, t: float, rotacao: int = 0, *, alfa: bool = False
+              ) -> np.ndarray | None:
+    """Um quadro perto do instante ``t`` (para escolher a thumbnail), em RGB ou RGBA."""
     k = _giro(rotacao)
     with av.open(str(caminho)) as c:
         stream = c.streams.video[0]
         alvo = int(max(0.0, t) / stream.time_base) if stream.time_base else 0
         with contextlib.suppress(av.error.FFmpegError):
             c.seek(alvo, stream=stream, backward=True, any_frame=False)
+        if alfa and _alfa_no_vp9(stream):
+            # O alfa do VP9 só sai pelo libvpx, alimentado com os pacotes a partir do
+            # ponto da busca (um quadro-chave).
+            ctx = av.CodecContext.create("libvpx-vp9", "r")
+            if stream.codec_context.extradata:
+                ctx.extradata = stream.codec_context.extradata
+            quadros_ = (q for pacote in c.demux(stream) for q in ctx.decode(pacote))
+
+            def tempo(q):
+                return None if q.pts is None else float(q.pts * stream.time_base)
+        else:
+            quadros_ = c.decode(stream)
+
+            def tempo(q):
+                return q.time
         melhor = None
-        for quadro in c.decode(stream):
-            if quadro.time is None:
+        for quadro in quadros_:
+            if tempo(quadro) is None:
                 continue
             melhor = quadro
-            if quadro.time >= t:
+            if tempo(quadro) >= t:
                 break
         if melhor is None:
             return None
-        matriz = melhor.to_ndarray(format="rgb24")
+        matriz = melhor.to_ndarray(format="rgba" if alfa else "rgb24")
         return np.ascontiguousarray(np.rot90(matriz, k=k)) if k else matriz
 
 
@@ -231,5 +352,5 @@ class Gravador:
                 self.caminho.unlink(missing_ok=True)
 
 
-__all__ = ["TAXA", "Gravador", "Info", "ler_audio", "ler_audio_mono", "quadro_em", "quadros",
-           "sondar"]
+__all__ = ["TAXA", "Cursor", "Gravador", "Info", "duracao_do_audio", "ler_audio",
+           "ler_audio_mono", "quadro_em", "quadros", "sondar", "tem_alfa"]

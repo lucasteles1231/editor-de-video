@@ -19,6 +19,7 @@
   <a href="#começo-rápido"><b>Instalar</b></a> ·
   <a href="#o-que-ele-faz">O que ele faz</a> ·
   <a href="#a-interface">A interface</a> ·
+  <a href="#a-montagem-em-camadas">Camadas</a> ·
   <a href="#a-thumbnail">A thumbnail</a> ·
   <a href="#no-terminal">No terminal</a> ·
   <a href="#desempenho">Desempenho</a> ·
@@ -52,13 +53,13 @@ sugestões do Gemini, com uma chave grátis sua.
     <td align="center" width="25%"><img src="docs/img/quadro-legenda.png" alt="Legenda karaokê: 'a legenda palavra' com 'legenda' em amarelo" width="200"></td>
     <td align="center" width="25%"><img src="docs/img/quadro-adesivo.png" alt="Adesivo: a palavra 'microfone' salta num balão amarelo" width="200"></td>
     <td align="center" width="25%"><img src="docs/img/quadro-icone.png" alt="Ícone: ao falar 'dinheiro', aparece uma moeda num balão" width="200"></td>
-    <td align="center" width="25%"><img src="docs/img/quadro-pessoa.png" alt="A pessoa recortada foi para a direita, na frente do vídeo desfocado, e a moeda apareceu no lado livre" width="200"></td>
+    <td align="center" width="25%"><img src="docs/img/quadro-montagem.png" alt="Uma gravação de tela do editor ao fundo e, por cima, a pessoa recortada, encostada na direita, com a moeda no lado livre" width="200"></td>
   </tr>
   <tr>
     <td align="center"><b>Legenda karaokê</b><br><sub>a palavra acende quando é dita; a palavra-chave fica amarela</sub></td>
     <td align="center"><b>Adesivos</b><br><sub>números, nomes e palavras fortes saltam da legenda</sub></td>
     <td align="center"><b>Ícones automáticos</b><br><sub>falou "dinheiro", "celular" ou "foguete"? O ícone aparece</sub></td>
-    <td align="center"><b>A pessoa muda de lugar</b><br><sub>opcional: em alguns cortes ela vai para um lado, e o ícone ocupa o outro</sub></td>
+    <td align="center"><b>Fundo e pessoa em camadas</b><br><sub>a tela gravada atrás, e você (ou um personagem) andando por cima</sub></td>
   </tr>
 </table>
 
@@ -88,10 +89,12 @@ sugestões do Gemini, com uma chave grátis sua.
   </tr>
   <tr>
     <td><img src="docs/img/funcoes/pessoa.svg" width="44" alt=""></td>
-    <td><b>A pessoa muda de lugar.</b> Opcional. Em alguns cortes, a pessoa recortada vai
-    para um lado, para cima, para baixo, para perto ou para longe, na frente do próprio
-    vídeo desfocado (sem ela) ou de uma cor. Com um ícone no trecho, ela vai para o lado
-    oposto e deixa o lugar para ele; com uma palavra saltando, ela chega mais perto.</td>
+    <td><b>Fundo e pessoa em camadas.</b> Opcional. Um vídeo de fundo sem pessoa (a tela
+    gravada, um jogo, slides) e, por cima, o vídeo de você falando ou um personagem animado
+    em loop. Em alguns cortes, quem está por cima vai para um lado, para o meio, para cima,
+    para baixo, para perto ou para longe. Com um ícone no trecho, vai para o lado oposto e
+    deixa o lugar para ele. Veja <a href="#a-montagem-em-camadas">A montagem em
+    camadas</a>.</td>
   </tr>
   <tr>
     <td><img src="docs/img/funcoes/icones.svg" width="44" alt=""></td>
@@ -122,7 +125,8 @@ sugestões do Gemini, com uma chave grátis sua.
 
 A edição do vídeo não usa IA generativa: cada decisão segue uma regra fixa, e o mesmo
 vídeo sai sempre igual. As IAs que rodam são o Whisper, que transcreve a fala, e o MODNet,
-que recorta a pessoa para a thumbnail e para movê-la no vídeo, as duas no seu computador.
+que recorta a pessoa para a thumbnail e para a montagem em camadas, as duas no seu
+computador.
 O Gemini só entra se você colar uma chave e ligar as sugestões.
 
 ## A interface
@@ -150,8 +154,9 @@ escolher as edições, escolher a saída e, se quiser, a thumbnail.
 
 <img src="docs/img/interface-progresso.png" alt="O progresso da edição, etapa por etapa, com o tempo que falta" width="300" align="right">
 
+- **Envio:** um vídeo só, ou a montagem em camadas: o fundo, a pessoa ou o personagem e,
+  se quiser, a narração à parte.
 - **Edições:** ligue e desligue cada efeito, e ajuste a pausa máxima e a força do zoom.
-  Ao ligar **Mover a pessoa**, a página mostra quanto tempo a mais a edição vai levar.
 - **Legenda:** o idioma da fala, o tamanho do modelo e se quer o `.srt` e o `.vtt`.
 - **Saída:** a extensão (MP4, MOV, WebM, MKV ou GIF), o codec, a resolução, os quadros por
   segundo e a qualidade. Só aparece o que o seu computador consegue gravar.
@@ -219,6 +224,33 @@ thumbnails. Cada ideia escolhe a chamada, o modelo, o quadro, o fundo, a luz, a 
 A cota gratuita é pequena. Em outubro de 2026, o modelo principal aceitava 20 pedidos
 por dia, e cada sugestão gasta um ou dois. Quando a cota de um modelo acaba, o editor
 passa para o próximo, e o aviso diz quando ela volta.
+
+## A montagem em camadas
+
+Quando o assunto está na tela (um tutorial, um jogo, slides), grave o fundo e a sua fala
+separados. No passo 1, escolha **Um fundo e, por cima, você ou um personagem**:
+
+<p align="center">
+  <img src="docs/img/interface-montagem.png" alt="O passo 1 na montagem: o vídeo de fundo, o personagem de palito por cima e a narração à parte" width="640">
+</p>
+
+- **O vídeo de fundo:** sem pessoa. Ele começa junto com a fala e, se for mais curto,
+  volta ao começo.
+- **Por cima, o vídeo da pessoa:**
+  - se ele já vem sem fundo (WebM VP9 ou MOV com transparência), vale o recorte do
+    próprio arquivo, sem custo nenhum;
+  - senão, o MODNet recorta o vídeo inteiro no seu computador, e a página mostra quanto
+    tempo isso leva.
+- **Ou por cima, um personagem animado:** um GIF, PNG animado ou WebP, em loop do começo
+  ao fim. Se ele tem um fundo de cor única, essa cor sai.
+- **A narração à parte (opcional):** um MP3, WAV ou M4A. Sem ela, a fala vem do vídeo da
+  pessoa ou, se ele não tiver som, do fundo. É da fala que saem a legenda e os cortes.
+- **O formato do quadro** fica no passo 4: igual ao fundo, em pé, deitado ou quadrado. O
+  fundo entra inteiro, e as sobras ficam com ele mesmo, desfocado.
+
+A pessoa (ou o personagem) começa embaixo no meio, em pé, ou embaixo à direita, deitado e
+quadrado. Em alguns cortes, ela anda: com um ícone, para o lado oposto ao dele; com uma
+palavra saltando, para perto. **Mover a pessoa**, no passo 2, desliga isso.
 
 ## Começo rápido
 
@@ -348,7 +380,8 @@ editar aula.mov --srt --vtt                       # também grava as legendas à
 editar video.mp4 --previa 15                      # só os primeiros 15 s, para testar
 editar video.mp4 --formato webm --resolucao 720p  # WebM (VP9) em 720p
 editar video.mp4 --sem-zoom --sem-sons            # sem zoom e sem efeitos sonoros
-editar video.mp4 --mover-pessoa                   # a pessoa muda de lugar em alguns cortes
+editar eu.mp4 --fundo tela.mp4 --quadro vertical  # você por cima da tela gravada, em pé
+editar --fundo jogo.mp4 --personagem boneco.gif --audio narracao.m4a
 editar talk.mp4 --idioma en --modelo medium       # fala em inglês, modelo maior
 editar video.mp4 -o final.mov --codec prores      # ProRes, para levar a outro editor
 editar --formatos                                 # o que este computador grava
@@ -369,9 +402,14 @@ editar --formatos                                 # o que este computador grava
 | `--zoom N` | o nível do zoom (`1.12` = 12%) | `1.12` |
 | `--ancora X,Y` | o centro do zoom, de 0 a 1 | `0.5,0.4` |
 | `--tamanho-legenda N` | `0.8` menor, `1.25` maior | `1.0` |
-| `--mover-pessoa` | em alguns cortes, a pessoa recortada muda de lugar | |
-| `--fundo-da-pessoa` | atrás dela: `video` (o vídeo desfocado) ou `cor` | `video` |
-| `--cor-do-fundo` | `amarelo`, `rosa`, `ciano`, `lima`, `laranja`, `roxo` ou `vermelho` | `roxo` |
+| `--fundo` | a montagem: o vídeo de fundo, sem pessoa | |
+| `--pessoa` | o vídeo de você falando, por cima do fundo | o vídeo do argumento |
+| `--personagem` | um GIF, PNG animado ou WebP, em loop por cima | |
+| `--audio` | a narração à parte | o som da pessoa, ou o do fundo |
+| `--recorte` | `transparente` (o vídeo já vem sem fundo) ou `modnet` | detectado no arquivo |
+| `--quadro` | `fundo`, `vertical`, `horizontal` ou `quadrado` | `fundo` |
+| `--parada` | quem está por cima não muda de lugar | |
+| `--manter-fundo-do-personagem` | não tira o fundo de cor única do personagem | |
 | `--idioma` | o idioma da fala (`pt`, `en`, `es`…) | `pt` |
 | `--modelo` | `tiny`, `base`, `small` ou `medium` | `small` |
 | `--previa S` | edita só os primeiros segundos | |
@@ -412,7 +450,7 @@ editar --formatos                                 # o que este computador grava
 flowchart TD
     V([seu vídeo]) --> W[transcrição com o Whisper, no seu computador]
     W --> C[cortes nas pausas medidas no áudio]
-    C --> P[plano: legenda, adesivos, zoom, ícones, sons e onde a pessoa se move]
+    C --> P[plano: legenda, adesivos, zoom, ícones, sons e, na montagem, onde a pessoa anda]
     P --> D[desenho quadro a quadro]
     P --> T[thumbnail, desenhada no navegador]
     R[recorte da pessoa, com o MODNet] --> T
@@ -430,11 +468,10 @@ flowchart TD
    costuma marcar o fim da palavra cedo e o começo da seguinte muito cedo, e o corte no
    tempo dele comeria sílabas ou deixaria meia pausa.
 4. O **plano** decide, por regras, cada linha de legenda, cada adesivo, zoom, ícone e
-   som, e onde a pessoa muda de lugar. Ele vai junto do vídeo, como `.plano.json`.
+   som e, na montagem, onde a pessoa anda. Ele vai junto do vídeo, como `.plano.json`.
 5. Cada quadro é **desenhado** em Python e gravado no formato escolhido. O áudio recebe
-   uma transição de 8 ms em cada corte, para não estalar. Nos trechos em que a pessoa
-   muda de lugar, ela é recortada quadro a quadro pelo MODNet, e o fundo é o próprio
-   quadro desfocado, com a região dela preenchida pelas cores em volta.
+   uma transição de 8 ms em cada corte, para não estalar. Na montagem, o fundo e quem
+   vai por cima começam juntos, e os cortes valem para os dois.
 6. A **thumbnail** é desenhada na página. A prévia ao vivo usa o
    [Remotion Player](https://www.remotion.dev/player), e o PNG final sai do mesmo desenho,
    no próprio navegador. A pessoa é recortada pelo MODNet, com o ONNX Runtime, e as ideias
@@ -453,15 +490,19 @@ Medido num MacBook com **Apple M5** (10 núcleos), num vídeo vertical 1080×192
 
 O pico de memória ficou em 1,3 GB. Num computador mais modesto, conte com mais tempo.
 
-**Mover a pessoa** deixa a edição mais lenta, porque nos trechos em que ela sai do lugar
-a pessoa é recortada quadro a quadro. Medido no mesmo M5, uma edição logo depois da
-outra, com outros programas abertos (por isso as bases são maiores que as da tabela
-acima):
+**Na montagem**, o tempo depende de quem vai por cima. Medido no mesmo M5, com a fala de
+27 s e uma gravação de tela de 15 s no fundo, com outros programas abertos:
 
-| Vídeo | Sem mover | Movendo | A pessoa fora do lugar |
-|---|---|---|---|
-| 1 min 46 s | 1 min 30 s | 1 min 50 s | 19 s de 1 min 12 s, em 9 trechos |
-| 27 s | 17 s | 25 s | 4 s de 18 s, em 2 trechos |
+| Por cima | Quadro | Tempo |
+|---|---|---|
+| a pessoa, recortada pelo MODNet | deitado, 1280×720 | 49 s |
+| a pessoa, recortada pelo MODNet | em pé, 720×1280 | 48 s |
+| a pessoa já sem fundo (MOV ProRes 4444) | quadrado, 720×720 | 14 s |
+| um personagem em GIF, com a narração à parte | em pé, 720×1280 | 10 s |
+
+O MODNet recorta o vídeo da pessoa inteiro, quadro a quadro: é ele que custa. Exportar o
+vídeo já sem fundo (WebM VP9 ou MOV ProRes 4444, no CapCut ou no Premiere) evita esse
+tempo.
 
 Para ir mais rápido:
 

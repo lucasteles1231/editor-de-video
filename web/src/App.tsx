@@ -1,13 +1,20 @@
-import React, {useCallback, useEffect, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {api} from './api';
 import {Painel} from './componentes/Painel';
-import {PassoEdicoes, PassoEnvio, PassoLegenda, PassoSaida} from './componentes/Passos';
+import {type Envio, PassoEdicoes, PassoEnvio, PassoLegenda, PassoSaida} from './componentes/Passos';
 import {ThumbPasso, chaveDoRecorte, propsDaThumb, type Recortes} from './componentes/ThumbPasso';
 import {PROPORCAO} from './componentes/thumb/AbaFundo';
 import {gerarPng} from './thumb/exportar';
 import {carregarFonte} from './thumb/medida';
-import type {Edicao, Estado, EstadoChave, EstadoIa, Ideia, Saida, Tarefa, ThumbConfig, VideoInfo} from './tipos';
+import type {
+  AudioInfo, Camadas, Edicao, Estado, EstadoChave, EstadoIa, Ideia, Modo, MontagemConfig, PersonagemInfo, RecorteInfo,
+  Saida, Tarefa, ThumbConfig, VideoInfo,
+} from './tipos';
 import {comecarTour, tourJaVisto} from './tour';
+
+const MONTAGEM_PADRAO: MontagemConfig = {porCima: 'pessoa', recorte: 'modnet', formato: 'fundo', tirarFundo: true};
+const NADA_ENVIANDO: Record<Envio, number | null> = {video: null, fundo: null, pessoa: null, personagem: null, audio: null};
+const SEM_ERRO: Record<Envio, string> = {video: '', fundo: '', pessoa: '', personagem: '', audio: ''};
 
 const THUMB_PADRAO: ThumbConfig = {
   ativo: true, texto: '', destaque: -1, t: 0, icone: '', modelo: 'classico', cor: 'amarelo', selo: '',
@@ -66,9 +73,16 @@ export const App: React.FC = () => {
   const [erroGeral, setErroGeral] = useState('');
   const [edicao, setEdicao] = useState<Edicao | null>(null);
   const [saida, setSaida] = useState<Saida | null>(null);
-  const [video, setVideo] = useState<VideoInfo | null>(null);
-  const [envio, setEnvio] = useState<number | null>(null);
-  const [erroEnvio, setErroEnvio] = useState('');
+  const [modo, setModo] = useState<Modo>('um');
+  const [unico, setUnico] = useState<VideoInfo | null>(null);
+  const [fundo, setFundo] = useState<VideoInfo | null>(null);
+  const [pessoa, setPessoa] = useState<VideoInfo | null>(null);
+  const [personagem, setPersonagem] = useState<PersonagemInfo | null>(null);
+  const [recorteDoPersonagem, setRecorteDoPersonagem] = useState<RecorteInfo | null>(null);
+  const [audio, setAudio] = useState<AudioInfo | null>(null);
+  const [montagem, setMontagem] = useState<MontagemConfig>(MONTAGEM_PADRAO);
+  const [envios, setEnvios] = useState(NADA_ENVIANDO);
+  const [errosDeEnvio, setErrosDeEnvio] = useState(SEM_ERRO);
   const [thumb, setThumb] = useState<ThumbConfig>(THUMB_PADRAO);
   const [icones, setIcones] = useState<Record<string, string[]>>({});
   const [fonteOk, setFonteOk] = useState(false);
@@ -87,6 +101,17 @@ export const App: React.FC = () => {
   const [pexels, setPexels] = useState<EstadoChave>({configurada: false, origem: '', final: ''});
   const [geracao, setGeracao] = useState({restantes: 0, teto: 0});
   const [gerando, setGerando] = useState<number | null>(null);
+  // O vídeo da thumbnail: o único; na montagem, o da pessoa (com personagem, o do fundo,
+  // de onde saem os quadros de trás dele).
+  const naMontagem = modo === 'montagem';
+  const comPersonagem = naMontagem && montagem.porCima === 'personagem';
+  const video = !naMontagem ? unico : comPersonagem ? fundo : pessoa;
+  const camadas: Camadas | null = useMemo(() => (!naMontagem ? null : {
+    fundo,
+    personagem: comPersonagem && personagem
+      ? {info: personagem, recorte: recorteDoPersonagem, tirarFundo: montagem.tirarFundo} : null,
+  }), [naMontagem, comPersonagem, fundo, personagem, recorteDoPersonagem, montagem.tirarFundo]);
+  const podeEditar = !naMontagem ? Boolean(unico) : Boolean(fundo && (comPersonagem ? personagem : pessoa));
   const pararDeAcompanhar = useRef<(() => void) | null>(null);
   const recortesPedidos = useRef(new Set<string>());
   const thumbAtual = useRef(thumb);
@@ -110,16 +135,25 @@ export const App: React.FC = () => {
 
   // O recorte do quadro da prévia: espera o controle deslizante parar.
   useEffect(() => {
-    if (!video || !thumb.recorte) return;
+    if (!video || !thumb.recorte || comPersonagem) return;
     const espera = setTimeout(() => pedirRecorte(video, thumb.t), 250);
     return () => clearTimeout(espera);
-  }, [video, thumb.t, thumb.recorte, pedirRecorte]);
+  }, [video, thumb.t, thumb.recorte, comPersonagem, pedirRecorte]);
 
   // E o de cada ideia, para os cartões.
   useEffect(() => {
-    if (!video) return;
+    if (!video || comPersonagem) return;
     for (const ideia of ideias) if (ideia.recorte) pedirRecorte(video, ideia.t);
-  }, [video, ideias, pedirRecorte]);
+  }, [video, ideias, comPersonagem, pedirRecorte]);
+
+  // O personagem é medido uma vez (e de novo se o fundo de cor dele sair ou voltar).
+  useEffect(() => {
+    if (!personagem) return;
+    setRecorteDoPersonagem(null);
+    api.personagemRecorte(personagem.id, montagem.tirarFundo)
+      .then(setRecorteDoPersonagem)
+      .catch(() => setRecorteDoPersonagem({ok: false, pessoa: null, rosto: null}));
+  }, [personagem, montagem.tirarFundo]);
 
   useEffect(() => {
     api.estado()
@@ -139,32 +173,75 @@ export const App: React.FC = () => {
     return () => pararDeAcompanhar.current?.();
   }, []);
 
-  const escolherArquivo = useCallback((arquivo: File) => {
-    setErroEnvio('');
-    setEnvio(0);
+  /** O vídeo de onde sai o quadro da pessoa na thumbnail mudou: o quadro volta para o
+   *  mais nítido dele. */
+  const novoQuadroDaThumb = useCallback((v: VideoInfo) => {
+    setThumb((t) => ({...t, t: Math.min(v.duracao / 3, Math.max(0, v.duracao - 0.2)), fundoT: null,
+      rosto: null, rostoT: null, alvo: null, seta: false}));
+    api.quadroAutomatico(v.id).then((r) => setThumb((t) => ({...t, t: r.t}))).catch(() => undefined);
+  }, []);
+
+  const escolherArquivo = useCallback((qual: Envio, arquivo: File) => {
+    const progresso = (f: number | null) => setEnvios((e) => ({...e, [qual]: f}));
+    setErrosDeEnvio((e) => ({...e, [qual]: ''}));
+    progresso(0);
     setTarefa(null);
     setThumbs([]);
     setIdeias([]);
     setErroIa('');
     setEscolhida(-1);
-    api.enviar(arquivo, setEnvio)
+    const falhou = (e: Error) => setErrosDeEnvio((x) => ({...x, [qual]: e.message}));
+    const fim = () => progresso(null);
+    if (qual === 'personagem') {
+      api.enviarPersonagem(arquivo, progresso).then(setPersonagem).catch(falhou).finally(fim);
+      return;
+    }
+    if (qual === 'audio') {
+      api.enviarAudio(arquivo, progresso).then(setAudio).catch(falhou).finally(fim);
+      return;
+    }
+    api.enviar(arquivo, progresso)
       .then((v) => {
-        setVideo(v);
-        setThumb((t) => ({...t, t: Math.min(v.duracao / 3, Math.max(0, v.duracao - 0.2)), rosto: null,
-          rostoT: null, alvo: null, seta: false}));
-        api.quadroAutomatico(v.id).then((r) => setThumb((t) => ({...t, t: r.t}))).catch(() => undefined);
+        if (qual === 'video') {
+          setUnico(v);
+          novoQuadroDaThumb(v);
+        } else if (qual === 'fundo') {
+          setFundo(v);
+          if (montagem.porCima === 'personagem') novoQuadroDaThumb(v);
+        } else {
+          setPessoa(v);
+          // O vídeo já sem fundo dispensa o MODNet: a página escolhe sozinha.
+          setMontagem((m) => ({...m, recorte: v.tem_alfa ? 'transparente' : 'modnet'}));
+          novoQuadroDaThumb(v);
+        }
       })
-      .catch((e: Error) => setErroEnvio(e.message))
-      .finally(() => setEnvio(null));
-  }, []);
+      .catch(falhou)
+      .finally(fim);
+  }, [montagem.porCima, novoQuadroDaThumb]);
 
-  const gerarThumbs = useCallback(async (tarefaId: string, v: VideoInfo, config: ThumbConfig) => {
+  const mudarMontagem = (p: Partial<MontagemConfig>) => {
+    setMontagem((m) => ({...m, ...p}));
+    // Trocar o que vai por cima troca o vídeo da thumbnail.
+    if (p.porCima && p.porCima !== montagem.porCima) {
+      const v = p.porCima === 'personagem' ? fundo : pessoa;
+      if (v) novoQuadroDaThumb(v);
+    }
+  };
+
+  const trocarModo = (m: Modo) => {
+    setModo(m);
+    const v = m === 'um' ? unico : montagem.porCima === 'personagem' ? fundo : pessoa;
+    if (v) novoQuadroDaThumb(v);
+  };
+
+  const gerarThumbs = useCallback(async (tarefaId: string, v: VideoInfo, config: ThumbConfig,
+                                         c: Camadas | null) => {
     setGerandoThumbs(true);
     const feitas: {nome: string; url: string; jpgBytes: number}[] = [];
     try {
-      const recorte = config.recorte ? await api.recorteInfo(v.id, config.t).catch(() => null) : null;
+      const recorte = config.recorte && !c?.personagem ? await api.recorteInfo(v.id, config.t).catch(() => null) : null;
       for (const tamanho of config.tamanhos) {
-        const blob = await gerarPng(propsDaThumb(config, v, tamanho, icones, recorte));
+        const blob = await gerarPng(propsDaThumb(config, v, tamanho, icones, recorte, c));
         const r = await api.salvarThumbnail(tarefaId, blob, tamanho);
         feitas.push({nome: r.png, url: api.arquivoUrl(tarefaId, r.png, true), jpgBytes: r.jpg_bytes});
       }
@@ -209,7 +286,7 @@ export const App: React.FC = () => {
     }
   }, [fotosDoBanco]);
 
-  const quandoTerminar = useCallback(async (t: Tarefa, v: VideoInfo) => {
+  const quandoTerminar = useCallback(async (t: Tarefa, v: VideoInfo, c: Camadas | null) => {
     if (t.estado !== 'pronto') return;
     let config = thumbAtual.current;
     if (!config.texto) {
@@ -231,30 +308,38 @@ export const App: React.FC = () => {
         setEscolhida(0);
       }
     }
-    if (config.ativo) await gerarThumbs(t.id, v, config);
+    if (config.ativo) await gerarThumbs(t.id, v, config, c);
   }, [gerarThumbs, pedirIdeias]);
 
   const editar = useCallback(async () => {
-    if (!video || !edicao || !saida) return;
+    if (!video || !edicao || !saida || !podeEditar) return;
     setErroEdicao('');
     setThumbs([]);
     setIdeias([]);
     setErroIa('');
     pararDeAcompanhar.current?.();
+    const alvo = !naMontagem || !fundo ? {videoId: video.id} : {montagem: {
+      fundo_id: fundo.id,
+      ...(comPersonagem && personagem ? {personagem_id: personagem.id} : {}),
+      ...(!comPersonagem && pessoa ? {pessoa_id: pessoa.id} : {}),
+      ...(audio ? {audio_id: audio.id} : {}),
+      recorte: montagem.recorte, formato: montagem.formato, tirar_fundo_do_personagem: montagem.tirarFundo,
+    }};
     try {
-      const t = await api.criarTarefa(video.id, edicao, saida, previa ? 15 : null);
+      const t = await api.criarTarefa(alvo, edicao, saida, previa ? 15 : null);
       setTarefa(t);
       pararDeAcompanhar.current = api.acompanhar(t.id, (nova) => {
         setTarefa(nova);
-        if (nova.estado !== 'rodando') void quandoTerminar(nova, video);
+        if (nova.estado !== 'rodando') void quandoTerminar(nova, video, camadas);
       });
     } catch (e) {
       setErroEdicao((e as Error).message);
     }
-  }, [video, edicao, saida, previa, quandoTerminar]);
+  }, [video, edicao, saida, previa, quandoTerminar, podeEditar, naMontagem, fundo, comPersonagem, personagem,
+    pessoa, audio, montagem, camadas]);
 
   const regerar = () => {
-    if (tarefa?.estado === 'pronto' && video) void gerarThumbs(tarefa.id, video, thumb);
+    if (tarefa?.estado === 'pronto' && video) void gerarThumbs(tarefa.id, video, thumb, camadas);
   };
 
   const painelIa = ia ? {
@@ -272,11 +357,14 @@ export const App: React.FC = () => {
     propsDaIdeia: (ideia: Ideia) => {
       if (!video || !fonteOk) return null;
       const config = aplicarIdeia(thumb, ideia);
+      if (camadas?.personagem) {
+        return camadas.personagem.recorte ? propsDaThumb(config, video, '1280x720', icones, null, camadas) : null;
+      }
       const recorte = recorteDe(video, ideia.t);
       // Enquanto o recorte da ideia não chega, o cartão espera. Desenhar o quadro inteiro e
       // trocar pela pessoa recortada um instante depois parecia defeito.
       if (config.recorte && !recorte) return null;
-      return propsDaThumb(config, video, '1280x720', icones, recorte ?? null);
+      return propsDaThumb(config, video, '1280x720', icones, recorte ?? null, camadas);
     },
     gerando,
     pexelsConfigurado: pexels.configurada,
@@ -295,6 +383,18 @@ export const App: React.FC = () => {
         .finally(() => setGerando(null));
     },
   } : null;
+
+  // Na prévia do painel: o recorte da pessoa num quadro dela, ou o personagem.
+  const porCimaDoPainel = !naMontagem || !fundo ? null
+    : comPersonagem && personagem ? {
+      url: montagem.tirarFundo && !personagem.tem_alfa ? api.personagemQuadroUrl(personagem.id, true)
+        : api.personagemArquivoUrl(personagem.id),
+      emPe: montagem.formato === 'vertical' || (montagem.formato === 'fundo' && fundo.vertical)}
+      : !comPersonagem && pessoa ? {
+        url: montagem.recorte === 'transparente' || estado?.recorte.baixado
+          ? api.recorteUrl(pessoa.id, Math.min(1, pessoa.duracao / 2), 480) : api.quadroUrl(pessoa.id, 1, 480),
+        emPe: montagem.formato === 'vertical' || (montagem.formato === 'fundo' && fundo.vertical)}
+        : null;
 
   return (
     <>
@@ -319,16 +419,21 @@ export const App: React.FC = () => {
             <p>Legenda karaokê, cortes de silêncio, zoom, palavras que saltam, ícones, sons e thumbnail —
               tudo feito aqui no seu computador.</p>
           </div>
-          <PassoEnvio video={video} progresso={envio} erro={erroEnvio} aoEscolher={escolherArquivo} />
+          <PassoEnvio modo={modo} setModo={trocarModo} video={unico} fundo={fundo} pessoa={pessoa}
+            personagem={personagem} audio={audio} montagem={montagem} mudarMontagem={mudarMontagem}
+            progresso={envios} erro={errosDeEnvio} aoEscolher={escolherArquivo} aoTirarAudio={() => setAudio(null)}
+            recorte={estado?.recorte ?? {baixado: true, tamanho: ''}} />
           {estado && edicao && saida ? (
             <>
-              <PassoEdicoes edicao={edicao} mudar={(p) => setEdicao({...edicao, ...p})} video={video}
-                recorte={estado.recorte} />
+              <PassoEdicoes edicao={edicao} mudar={(p) => setEdicao({...edicao, ...p})}
+                porCima={naMontagem ? montagem.porCima : null} />
               <PassoLegenda estado={estado} edicao={edicao} saida={saida}
                 mudar={(p) => setEdicao({...edicao, ...p})} mudarSaida={(p) => setSaida({...saida, ...p})} />
-              <PassoSaida estado={estado} saida={saida} video={video} mudar={(p) => setSaida({...saida, ...p})} />
+              <PassoSaida estado={estado} saida={saida} video={naMontagem ? fundo : unico}
+                mudar={(p) => setSaida({...saida, ...p})}
+                quadro={naMontagem ? {valor: montagem.formato, mudar: (f) => mudarMontagem({formato: f})} : null} />
               <ThumbPasso video={video} config={thumb} mudar={(p) => setThumb((t) => ({...t, ...p}))}
-                icones={icones} fonteOk={fonteOk} recorte={recorteDe(video, thumb.t)}
+                icones={icones} fonteOk={fonteOk} recorte={recorteDe(video, thumb.t)} camadas={camadas}
                 tamanhoDoRecorte={estado.recorte.tamanho} painelIa={painelIa}
                 pexels={pexels} setPexels={setPexels} geracao={geracao} setGeracao={setGeracao} />
               {tarefa?.estado === 'pronto' && thumb.ativo ? (
@@ -339,7 +444,8 @@ export const App: React.FC = () => {
             </>
           ) : null}
         </div>
-        <Painel video={video} tarefa={tarefa} previa={previa} setPrevia={setPrevia} aoEditar={editar}
+        <Painel video={naMontagem ? fundo : unico} porCima={porCimaDoPainel} podeEditar={podeEditar}
+          tarefa={tarefa} previa={previa} setPrevia={setPrevia} aoEditar={editar}
           aoCancelar={() => tarefa && api.cancelar(tarefa.id)} erro={erroEdicao} thumbs={thumbs}
           gerandoThumbs={gerandoThumbs} pastaSaida={estado?.pasta_saida ?? ''} />
       </main>

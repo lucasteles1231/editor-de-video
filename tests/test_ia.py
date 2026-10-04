@@ -388,3 +388,38 @@ class TestOFundoGerado:
     def test_falsa_nao_gasta(self):
         dados = ia.gerar_fundo("qualquer", "1:1")
         assert dados[:4] == b"\x89PNG" and ia.geracoes_restantes() == ia.TETO_DE_IMAGENS
+
+
+class TestAMontagemEmCamadas:
+    """Na montagem, os quadros vêm de duas camadas: a pessoa e o fundo."""
+
+    ORIGENS = ["pessoa"] * 4 + ["fundo"] * 4
+
+    def test_o_pedido_diz_de_onde_vem_cada_quadro(self):
+        pedido = ia.montar_pedido("fala", [1.0 * i for i in range(8)], idioma="pt",
+                                  duracao=20.0, vertical=True, nomes_de_icones=NOMES,
+                                  origens=self.ORIGENS)
+        assert "quadro 0: a 1ª imagem, em 0.0 s (da pessoa)" in pedido
+        assert "quadro 7: a 8ª imagem, em 7.0 s (do fundo)" in pedido
+        assert "MONTADO EM CAMADAS" in pedido and "0, 1, 2, 3" in pedido
+        so_fundo = ia.montar_pedido("fala", [1.0] * 8, idioma="pt", duracao=20.0,
+                                    vertical=True, nomes_de_icones=NOMES,
+                                    origens=["fundo"] * 8)
+        assert "personagem animado" in so_fundo
+
+    def test_quadro_da_pessoa_e_fundo_do_fundo(self):
+        def conferir(**muda):
+            return ia.conferir(_variante(**muda), quadros=8, nomes_de_icones=set(NOMES),
+                               origens=self.ORIGENS)
+
+        assert conferir(quadro=2)[0] is not None
+        assert conferir(quadro=5)[0] is None                     # 5 é do fundo
+        assert conferir(fundo="video", quadro_fundo=6, foco=[])[0] is not None
+        _, problemas = conferir(fundo="video", quadro_fundo=1, foco=[])
+        assert any("4, 5, 6, 7" in p for p in problemas)          # 1 é da pessoa
+
+    def test_com_personagem_nao_ha_rosto_e_sempre_recorta(self):
+        boas, _ = ia._separar({"variantes": [_variante(quadro=3, recorte=False,
+                                                       rosto=[100, 400, 300, 600])]},
+                              8, set(NOMES), ["fundo"] * 8)
+        assert boas[0]["recorte"] is True and boas[0]["rosto"] is None

@@ -458,12 +458,40 @@ def _fala_para_o_pedido(fala: str) -> str:
     return fala[:corte] + " […] " + fala[-(TETO_DA_FALA - corte):]
 
 
+def _indices(origens: Sequence[str] | None, n: int, qual: str) -> list[int]:
+    """Os quadros de uma origem ("pessoa" ou "fundo"); sem origens, todos."""
+    if origens is None:
+        return list(range(n))
+    escolhidos = [i for i, o in enumerate(origens) if o == qual]
+    return escolhidos or list(range(n))
+
+
+def _sobre_as_camadas(origens: Sequence[str] | None) -> str:
+    """O que dizer ao Gemini quando o vídeo é montado em camadas."""
+    if origens is None:
+        return ""
+    if "pessoa" not in origens:
+        return ("\nA PESSOA DO VÍDEO é um personagem animado, que não aparece nos quadros: "
+                "todos são do vídeo de fundo, o que fica atrás dele. Use \"quadro\" para o "
+                "quadro que vai atrás do personagem, \"rosto\" vazio ([]) e \"recorte\" "
+                "true.\n")
+    da_pessoa = ", ".join(str(i) for i in _indices(origens, len(origens), "pessoa"))
+    do_fundo = ", ".join(str(i) for i in _indices(origens, len(origens), "fundo"))
+    return (f"\nO VÍDEO É MONTADO EM CAMADAS: os quadros {da_pessoa} são da pessoa falando; "
+            f"os quadros {do_fundo} são do vídeo de fundo, que aparece atrás dela (uma tela, "
+            "um jogo, slides). \"quadro\" é sempre um quadro da pessoa; o fundo \"video\" "
+            "usa um quadro do fundo em \"quadro_fundo\".\n")
+
+
 def montar_pedido(fala: str, tempos: Sequence[float], *, idioma: str, duracao: float,
                   vertical: bool, nomes_de_icones: Sequence[str],
-                  evitar: Sequence[str] = ()) -> str:
+                  evitar: Sequence[str] = (), origens: Sequence[str] | None = None) -> str:
     lingua = IDIOMAS.get(idioma, idioma or "o idioma da fala")
-    quadros = "\n".join(f"- quadro {i}: a {i + 1}ª imagem, em {t:.1f} s"
-                        for i, t in enumerate(tempos))
+    nomes_da_origem = {"pessoa": " (da pessoa)", "fundo": " (do fundo)"}
+    quadros = "\n".join(
+        f"- quadro {i}: a {i + 1}ª imagem, em {t:.1f} s"
+        + (nomes_da_origem.get(origens[i], "") if origens is not None else "")
+        for i, t in enumerate(tempos))
     layouts = "\n".join(f"- {nome}: {o_que}" for nome, o_que in LAYOUTS.items())
     gastas = ", ".join(f'"{p}"' for p in PROIBIDAS)
     minimo, maximo = CHAMADA_PALAVRAS
@@ -472,7 +500,7 @@ def montar_pedido(fala: str, tempos: Sequence[float], *, idioma: str, duracao: f
     return f"""O VÍDEO: {duracao:.0f} segundos, {"vertical" if vertical else "horizontal"}.
 As {len(tempos)} imagens acima são quadros dele, em ordem:
 {quadros}
-
+{_sobre_as_camadas(origens)}
 O QUE É DITO NO VÍDEO (transcrição automática, pode ter erros):
 \"\"\"{_fala_para_o_pedido(fala)}\"\"\"
 
@@ -550,9 +578,14 @@ def _caixa(valor, problemas: list[str], nome: str) -> dict | None:
     return {"x0": x0 / 1000, "y0": y0 / 1000, "x1": x1 / 1000, "y1": y1 / 1000}
 
 
-def conferir(v: dict, *, quadros: int, nomes_de_icones: set[str]) -> tuple[dict | None,
-                                                                             list[str]]:
-    """Uma ideia pronta para a página, ou ``None`` e o que está errado nela."""
+def conferir(v: dict, *, quadros: int, nomes_de_icones: set[str],
+             origens: Sequence[str] | None = None) -> tuple[dict | None, list[str]]:
+    """Uma ideia pronta para a página, ou ``None`` e o que está errado nela.
+
+    Com ``origens`` (a montagem em camadas), ``quadro`` precisa ser um quadro da pessoa e
+    ``quadro_fundo`` um quadro do fundo."""
+    da_pessoa = _indices(origens, quadros, "pessoa")
+    do_fundo = _indices(origens, quadros, "fundo")
     problemas: list[str] = []
     modelo = str(v.get("modelo", ""))
     if modelo not in LAYOUTS:
@@ -596,8 +629,9 @@ def conferir(v: dict, *, quadros: int, nomes_de_icones: set[str]) -> tuple[dict 
     if fundo not in FUNDOS:
         problemas.append(f"o fundo {fundo!r} não existe")
     quadro = v.get("quadro")
-    if not isinstance(quadro, int) or not 0 <= quadro < quadros:
-        problemas.append(f"o quadro {quadro!r} não existe (são de 0 a {quadros - 1})")
+    if not isinstance(quadro, int) or quadro not in da_pessoa:
+        problemas.append(f"o quadro {quadro!r} não serve: use um destes: "
+                         f"{', '.join(map(str, da_pessoa))}")
     rosto = _caixa(v.get("rosto"), problemas, "rosto")
     # Um rosto mais alto que isto é a pessoa inteira, não o rosto (visto num teste real).
     # Ele sai sem pedir conserto: a página mede o rosto pelo recorte.
@@ -607,8 +641,9 @@ def conferir(v: dict, *, quadros: int, nomes_de_icones: set[str]) -> tuple[dict 
     quadro_fundo, foco, busca, cena = -1, None, "", ""
     if fundo == "video":
         quadro_fundo = v.get("quadro_fundo")
-        if not isinstance(quadro_fundo, int) or not 0 <= quadro_fundo < quadros:
-            problemas.append(f"o fundo video precisa de um quadro_fundo de 0 a {quadros - 1}")
+        if not isinstance(quadro_fundo, int) or quadro_fundo not in do_fundo:
+            problemas.append("o fundo video precisa de um quadro_fundo destes: "
+                             f"{', '.join(map(str, do_fundo))}")
         foco = _caixa(v.get("foco"), problemas, "foco")
     elif fundo == "banco":
         busca = " ".join(str(v.get("busca", "")).split())
@@ -678,12 +713,15 @@ def _falsas() -> list[dict]:
 
 def sugerir(fala: str, quadros: Sequence[tuple[float, bytes]], *, idioma: str,
             duracao: float, vertical: bool, nomes_de_icones: Sequence[str],
-            evitar: Sequence[str] = (), transporte=None) -> dict:
+            evitar: Sequence[str] = (), transporte=None,
+            origens: Sequence[str] | None = None) -> dict:
     """As ideias de thumbnail para um vídeo.
 
     ``quadros`` são ``(instante, jpeg)``. Devolve ``{"variantes": [...], "modelo": ...,
     "segundos": ...}``, cada variante já com o instante ``t`` do quadro escolhido.
-    Levanta :class:`ErroDaIA` com uma mensagem para quem usa.
+    Na montagem em camadas, ``origens`` diz de onde vem cada quadro ("pessoa" ou
+    "fundo"): ``t`` é do vídeo da pessoa (ou do fundo, com personagem) e ``t_fundo``,
+    do fundo. Levanta :class:`ErroDaIA` com uma mensagem para quem usa.
     """
     comeco = time.monotonic()
     tempos = [t for t, _ in quadros]
@@ -700,12 +738,12 @@ def sugerir(fala: str, quadros: Sequence[tuple[float, bytes]], *, idioma: str,
     nomes = set(nomes_de_icones)
     formato = esquema(sorted(nomes))
     pedido = montar_pedido(fala, tempos, idioma=idioma, duracao=duracao, vertical=vertical,
-                           nomes_de_icones=sorted(nomes), evitar=evitar)
+                           nomes_de_icones=sorted(nomes), evitar=evitar, origens=origens)
     imagens = [b for _, b in quadros]
     gasto: list[str] = []
     resposta, modelo = _perguntar(valor, SISTEMA, pedido, imagens, formato,
                                   temperatura=1.0, transporte=transporte, gasto=gasto)
-    boas, ruins = _separar(resposta, len(quadros), nomes)
+    boas, ruins = _separar(resposta, len(quadros), nomes, origens)
     if ruins and len(boas) < VARIANTES:
         logger.info("conserto de %d ideia(s): %s", len(ruins),
                     " | ".join("; ".join(p) for _, p in ruins))
@@ -721,7 +759,7 @@ def sugerir(fala: str, quadros: Sequence[tuple[float, bytes]], *, idioma: str,
             resposta2, modelo = _perguntar(valor, SISTEMA, conserto, imagens, formato,
                                            temperatura=0.4, transporte=transporte,
                                            gasto=gasto)
-            mais, _ = _separar(resposta2, len(quadros), nomes)
+            mais, _ = _separar(resposta2, len(quadros), nomes, origens)
             boas.extend(mais)
         except ErroDaIA:
             logger.info("o conserto não veio; ficam as ideias que já estavam boas")
@@ -736,13 +774,20 @@ def sugerir(fala: str, quadros: Sequence[tuple[float, bytes]], *, idioma: str,
             "segundos": round(time.monotonic() - comeco, 1)}
 
 
-def _separar(resposta: dict, quadros: int, nomes: set[str]
+def _separar(resposta: dict, quadros: int, nomes: set[str],
+             origens: Sequence[str] | None = None
              ) -> tuple[list[dict], list[tuple[dict, list[str]]]]:
     boas, ruins = [], []
+    personagem = origens is not None and "pessoa" not in origens
     for v in (resposta.get("variantes") or [])[:VARIANTES * 2]:
         if not isinstance(v, dict):
             continue
-        pronta, problemas = conferir(v, quadros=quadros, nomes_de_icones=nomes)
+        pronta, problemas = conferir(v, quadros=quadros, nomes_de_icones=nomes,
+                                     origens=origens)
+        if pronta and personagem:
+            # O personagem não aparece nos quadros: não há rosto para medir, e ele vai
+            # sempre recortado (é um desenho com transparência).
+            pronta["rosto"], pronta["recorte"] = None, True
         if pronta:
             boas.append(pronta)
         else:

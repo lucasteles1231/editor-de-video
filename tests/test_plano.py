@@ -178,15 +178,14 @@ class TestAPessoaQueMudaDeLugar:
         nomes = set(icones.nomes())
         p = plano.montar(ws, 20.0, vertical=True, cortes=self.CORTES, opcoes=OpcoesDeEdicao(),
                          nomes_de_icones=nomes)
-        assert p.movimentos == []
-        ligado = OpcoesDeEdicao(mover_pessoa=True)
-        p = plano.montar(ws, 20.0, vertical=True, cortes=self.CORTES, opcoes=ligado,
-                         nomes_de_icones=nomes)
+        assert p.movimentos == []                 # só a montagem em camadas pede movimentos
+        p = plano.montar(ws, 20.0, vertical=True, cortes=self.CORTES, opcoes=OpcoesDeEdicao(),
+                         nomes_de_icones=nomes, mover=True)
         assert p.movimentos
         # sai do lugar com um whoosh
         whooshes = {s.t for s in p.sons if s.nome == "whoosh"}
         assert p.movimentos[0].inicio in whooshes
-        sem_cortes = OpcoesDeEdicao(mover_pessoa=True, cortes=False)
+        sem_cortes = OpcoesDeEdicao(cortes=False)
         p = plano.montar(ws, 20.0, vertical=True, cortes=[], opcoes=sem_cortes,
-                         nomes_de_icones=nomes)
+                         nomes_de_icones=nomes, mover=True)
         assert p.movimentos == []

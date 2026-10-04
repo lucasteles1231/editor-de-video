@@ -13,7 +13,12 @@ const NOMES: Record<string, string> = {
 };
 
 type Props = {
+  /** O vídeo mostrado: o único, ou, na montagem, o de fundo. */
   video: VideoInfo | null;
+  /** Na montagem, a imagem de quem vai por cima (o recorte da pessoa ou o personagem), na
+   *  posição de casa: embaixo no meio em pé, embaixo à direita deitado. */
+  porCima?: {url: string; emPe: boolean} | null;
+  podeEditar: boolean;
   tarefa: Tarefa | null;
   previa: boolean;
   setPrevia: (v: boolean) => void;
@@ -59,6 +64,12 @@ export const Painel: React.FC<Props> = (p) => {
         <h3>{pronto ? 'Vídeo editado' : 'Seu vídeo'}</h3>
         {pronto ? (
           <video key={t.id} className="tela" src={api.arquivoUrl(t.id, 'video', true)} controls playsInline />
+        ) : p.video && p.porCima ? (
+          <div className={`tela-montada${p.porCima.emPe ? ' em-pe' : ''}`}>
+            <video key={p.video.id} className="tela" src={api.videoUrl(p.video.id)}
+              controls playsInline preload="metadata" />
+            <img className="por-cima" src={p.porCima.url} alt="" aria-hidden="true" />
+          </div>
         ) : p.video ? (
           <video key={p.video.id} className="tela" src={api.videoUrl(p.video.id)}
             controls playsInline preload="metadata" />
@@ -68,7 +79,7 @@ export const Painel: React.FC<Props> = (p) => {
       </div>
 
       <div className="painel" id="botao-editar" ref={editarRef}>
-        <button type="button" className="botao principal" disabled={!p.video || rodando} onClick={p.aoEditar}>
+        <button type="button" className="botao principal" disabled={!p.podeEditar || rodando} onClick={p.aoEditar}>
           {rodando ? 'Editando…' : pronto ? 'Editar de novo' : 'Editar vídeo'}
         </button>
         <label className="interruptor" style={{marginTop: 12, border: 'none', padding: '4px 2px'}}>

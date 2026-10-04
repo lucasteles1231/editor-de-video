@@ -3,7 +3,8 @@
  * URL aberta pelo comando `editar` e fica guardado na aba (sessionStorage).
  */
 import type {
-  Edicao, Estado, EstadoChave, EstadoIa, FotoPexels, Ideia, ImagemFundo, RecorteInfo, Saida, Tarefa, VideoInfo,
+  AudioInfo, Edicao, Estado, EstadoChave, EstadoIa, FotoPexels, Ideia, ImagemFundo, PersonagemInfo, RecorteInfo,
+  Saida, Tarefa, VideoInfo,
 } from './tipos';
 
 const CHAVE = 'editor-token';
@@ -33,14 +34,11 @@ async function pedir<T>(caminho: string, init: RequestInit = {}): Promise<T> {
   return r.json() as Promise<T>;
 }
 
-export const api = {
-  estado: () => pedir<Estado>('/api/estado'),
-
-  /** Envia o vídeo com progresso (o fetch não informa progresso de envio). */
-  enviar: (arquivo: File, aoProgresso: (fracao: number) => void) =>
-    new Promise<VideoInfo>((resolve, reject) => {
+/** Envia um arquivo com progresso (o fetch não informa progresso de envio). */
+function enviarArquivo<T>(rota: string, arquivo: File, aoProgresso: (fracao: number) => void): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/videos');
+      xhr.open('POST', rota);
       xhr.setRequestHeader('X-Editor-Token', token);
       xhr.upload.onprogress = (e) => e.lengthComputable && aoProgresso(e.loaded / e.total);
       xhr.onload = () => {
@@ -51,21 +49,47 @@ export const api = {
             return {};
           }
         })();
-        if (xhr.status >= 200 && xhr.status < 300) resolve(corpo as VideoInfo);
+        if (xhr.status >= 200 && xhr.status < 300) resolve(corpo as T);
         else reject(new Error(corpo.detail ?? corpo.erro ?? `erro ${xhr.status}`));
       };
       xhr.onerror = () => reject(new Error('o envio falhou — o editor ainda está aberto?'));
       const dados = new FormData();
       dados.append('arquivo', arquivo);
       xhr.send(dados);
-    }),
+  });
+}
 
-  criarTarefa: (videoId: string, edicao: Edicao, saida: Saida, previaS: number | null) =>
+/** O que a página pede para montar: os ids das camadas e as escolhas. */
+export type PedidoDeMontagem = {
+  fundo_id: string; pessoa_id?: string; personagem_id?: string; audio_id?: string;
+  recorte: 'transparente' | 'modnet'; formato: string; tirar_fundo_do_personagem: boolean;
+};
+
+export const api = {
+  estado: () => pedir<Estado>('/api/estado'),
+
+  enviar: (arquivo: File, aoProgresso: (fracao: number) => void) =>
+    enviarArquivo<VideoInfo>('/api/videos', arquivo, aoProgresso),
+  enviarPersonagem: (arquivo: File, aoProgresso: (fracao: number) => void) =>
+    enviarArquivo<PersonagemInfo>('/api/personagens', arquivo, aoProgresso),
+  enviarAudio: (arquivo: File, aoProgresso: (fracao: number) => void) =>
+    enviarArquivo<AudioInfo>('/api/audios', arquivo, aoProgresso),
+
+  /** Edita um vídeo só (``videoId``) ou a montagem em camadas. */
+  criarTarefa: (alvo: {videoId: string} | {montagem: PedidoDeMontagem}, edicao: Edicao, saida: Saida,
+                previaS: number | null) =>
     pedir<Tarefa>('/api/tarefas', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({video_id: videoId, edicao, saida, previa_s: previaS}),
+      body: JSON.stringify({...('videoId' in alvo ? {video_id: alvo.videoId} : {montagem: alvo.montagem}),
+        edicao, saida, previa_s: previaS}),
     }),
+
+  personagemQuadroUrl: (id: string, tirarFundo: boolean) =>
+    comToken(`/api/personagens/${id}/quadro.png?tirar_fundo=${tirarFundo ? 1 : 0}`),
+  personagemArquivoUrl: (id: string) => comToken(`/api/personagens/${id}/arquivo`),
+  personagemRecorte: (id: string, tirarFundo: boolean) =>
+    pedir<RecorteInfo>(`/api/personagens/${id}/recorte?tirar_fundo=${tirarFundo ? 1 : 0}`),
 
   /** Acompanha a edição ao vivo; devolve a função que para de acompanhar. */
   acompanhar(id: string, aoMudar: (t: Tarefa) => void): () => void {

@@ -12,8 +12,8 @@ Instituto Palito usa nos Shorts dele:
 - **zoom**: alterna entre perto e normal nos cortes;
 - **ícones**: quando a fala cita uma coisa que tem desenho na biblioteca;
 - **sons**: um pop quando algo aparece, um whoosh quando o zoom troca;
-- **a pessoa que muda de lugar** (se ligada): em alguns cortes, os de ênfase, ela vai
-  para um lado, para cima, para baixo, para perto ou para longe, revezando.
+- **a pessoa que muda de lugar** (na montagem em camadas): em alguns cortes, os de
+  ênfase, ela vai para um lado, o meio, para cima, para baixo, para perto ou para longe.
 """
 from __future__ import annotations
 
@@ -104,10 +104,11 @@ SINONIMOS = {
 # ── A pessoa que muda de lugar ───────────────────────────────────────────
 
 #: As posições sem motivo próprio, na ordem em que se revezam. Com um ícone no trecho, a
-#: pessoa vai para o lado oposto ao dele; com um adesivo, vem para perto.
+#: pessoa vai para o lado oposto ao dele; com um adesivo, vem para perto. Deitado, a casa
+#: é embaixo à direita, então o meio entra na fila.
 ORDEM_VERTICAL = ("longe", "esquerda", "cima", "direita", "baixo", "perto")
-ORDEM_HORIZONTAL = ("esquerda", "longe", "direita", "baixo", "cima", "perto")
-POSICOES = frozenset(ORDEM_HORIZONTAL)
+ORDEM_HORIZONTAL = ("meio", "esquerda", "longe", "cima", "perto", "baixo")
+POSICOES = frozenset(ORDEM_VERTICAL + ORDEM_HORIZONTAL)
 #: Um trecho entre cortes mais curto que isto fica como está: a pessoa mal chegaria.
 MOVER_MINIMO_S = 1.2
 #: O mais longo: passou disso, ela volta sozinha, deslizando.
@@ -444,8 +445,12 @@ def montar_sons(adesivos: Sequence[Adesivo], icones: Sequence[Icone],
 
 
 def montar(palavras: Sequence[Palavra], duracao: float, *, vertical: bool,
-           cortes: Sequence[float], opcoes: OpcoesDeEdicao, nomes_de_icones: set[str]) -> Plano:
-    """O plano inteiro, a partir das palavras já no tempo do vídeo editado."""
+           cortes: Sequence[float], opcoes: OpcoesDeEdicao, nomes_de_icones: set[str],
+           mover: bool = False) -> Plano:
+    """O plano inteiro, a partir das palavras já no tempo do vídeo editado.
+
+    ``mover`` liga os movimentos da pessoa: só a montagem em camadas tem para onde
+    levá-la."""
     teto = TETO_VERTICAL if vertical else TETO_HORIZONTAL
     blocos = montar_blocos(palavras, duracao, teto)
     adesivos = escolher_adesivos(blocos, duracao) if opcoes.adesivos else []
@@ -454,7 +459,7 @@ def montar(palavras: Sequence[Palavra], duracao: float, *, vertical: bool,
     empurroes = [(a.inicio, a.fim) for a in adesivos] if opcoes.zoom else []
     icones = escolher_icones(palavras, duracao, nomes_de_icones) if opcoes.icones else []
     movimentos = (montar_movimentos(duracao, cortes, adesivos, icones, vertical=vertical)
-                  if opcoes.mover_pessoa and opcoes.cortes else [])
+                  if mover and opcoes.cortes else [])
     sons = montar_sons(adesivos, icones, zoom, movimentos) if opcoes.sons else []
     return Plano(round(duracao, 3), vertical, blocos, adesivos, zoom, empurroes, icones, sons,
                  [round(c, 3) for c in cortes], movimentos=movimentos)

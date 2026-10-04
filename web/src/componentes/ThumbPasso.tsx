@@ -10,7 +10,7 @@ import {Player} from '@remotion/player';
 import React, {useEffect, useMemo, useState} from 'react';
 import {api} from '../api';
 import {PALETA, TAMANHOS, Thumb, ThumbComposicao, type ThumbProps} from '../thumb/Thumb';
-import type {Cor, EstadoChave, Modelo, RecorteInfo, ThumbConfig, VideoInfo} from '../tipos';
+import type {Camadas, Cor, EstadoChave, Modelo, RecorteInfo, ThumbConfig, VideoInfo} from '../tipos';
 import {Interruptor} from './Interruptor';
 import {PainelIa} from './PainelIa';
 import {AbaFundo} from './thumb/AbaFundo';
@@ -35,18 +35,28 @@ export const chaveDoRecorte = (t: number) => t.toFixed(2);
 export const daIa = (config: ThumbConfig) => config.rostoT !== null && Math.abs(config.rostoT - config.t) < 0.05;
 
 export function propsDaThumb(config: ThumbConfig, video: VideoInfo, tamanho: string,
-                             icones: Record<string, string[]>, recorte: RecorteInfo | null): ThumbProps {
+                             icones: Record<string, string[]>, recorte: RecorteInfo | null,
+                             camadas: Camadas | null = null): ThumbProps {
   const {largura, altura} = TAMANHOS[tamanho];
-  const usarRecorte = Boolean(config.recorte && recorte?.ok);
+  // Na montagem com personagem, ele é a pessoa recortada: um desenho com transparência.
+  const personagem = camadas?.personagem ?? null;
+  const usarRecorte = personagem ? Boolean(personagem.recorte?.ok) : Boolean(config.recorte && recorte?.ok);
   const vistoPelaIa = daIa(config);
-  const aspecto = video.largura / video.altura;
+  const aspecto = personagem ? personagem.info.largura / personagem.info.altura : video.largura / video.altura;
   const quadro = api.quadroUrl(video.id, config.t, 1920);
   // O fundo: o próprio quadro, outro quadro do vídeo, a imagem escolhida ou a cor.
   let fundo = config.fundo;
   let fundoImagem = '';
   let fundoAspecto = aspecto;
   let doProprio = false;
-  if (fundo === 'video') {
+  if (fundo === 'video' && (personagem || camadas?.fundo)) {
+    // Na montagem, o "Vídeo" é sempre o vídeo de fundo: no mesmo momento da pessoa, ou
+    // no escolhido.
+    const fonte = camadas?.fundo ?? video;
+    const t = config.fundoT ?? Math.min(config.t, Math.max(0, fonte.duracao - 0.1));
+    fundoImagem = api.quadroUrl(fonte.id, t, 1920);
+    fundoAspecto = fonte.largura / fonte.altura;
+  } else if (fundo === 'video') {
     doProprio = config.fundoT === null || Math.abs(config.fundoT - config.t) < 0.05;
     fundoImagem = doProprio ? quadro : api.quadroUrl(video.id, config.fundoT ?? config.t, 1920);
   } else if (fundo === 'imagem' && config.imagem) {
@@ -57,12 +67,14 @@ export function propsDaThumb(config: ThumbConfig, video: VideoInfo, tamanho: str
   }
   return {
     largura, altura, quadro, aspecto,
-    recorte: usarRecorte ? api.recorteUrl(video.id, config.t, Math.min(video.largura, 1440)) : '',
-    pessoa: usarRecorte ? recorte?.pessoa ?? null : null,
+    recorte: !usarRecorte ? '' : personagem ? api.personagemQuadroUrl(personagem.info.id, personagem.tirarFundo)
+      : api.recorteUrl(video.id, config.t, Math.min(video.largura, 1440)),
+    pessoa: !usarRecorte ? null : (personagem ? personagem.recorte?.pessoa : recorte?.pessoa) ?? null,
     // Com a pessoa recortada, o rosto vem da silhueta medida no próprio quadro. A caixa do
     // Gemini fica para o quadro inteiro: num teste real, ela veio com a pessoa toda dentro
     // em vez do rosto, e a pessoa encolheu até virar um bonequinho no canto.
-    rosto: usarRecorte ? recorte?.rosto ?? null : (vistoPelaIa ? config.rosto : null) ?? recorte?.rosto ?? null,
+    rosto: personagem ? personagem.recorte?.rosto ?? null
+      : usarRecorte ? recorte?.rosto ?? null : (vistoPelaIa ? config.rosto : null) ?? recorte?.rosto ?? null,
     fundo, fundoImagem, fundoAspecto, fundoDoProprioQuadro: doProprio,
     foco: fundo === 'video' && !doProprio ? config.foco : null,
     desfoque: config.desfoque, escurecer: config.escurecer, vinheta: config.vinheta, tom: config.tom,
@@ -93,6 +105,8 @@ type Props = {
   icones: Record<string, string[]>;
   fonteOk: boolean;
   recorte: RecorteInfo | null | undefined;
+  /** Na montagem: o vídeo de fundo e o personagem (``null`` no vídeo único). */
+  camadas: Camadas | null;
   tamanhoDoRecorte: string;
   painelIa: React.ComponentProps<typeof PainelIa> | null;
   pexels: EstadoChave;
@@ -110,8 +124,10 @@ export const ThumbPasso: React.FC<Props> = (p) => {
   const nomes = useMemo(() => Object.keys(icones).filter((n) => n.includes(busca.toLowerCase())),
     [icones, busca]);
   const previa = config.tamanhos.includes(tamanhoDaPrevia) ? tamanhoDaPrevia : (config.tamanhos[0] ?? '1280x720');
-  const props = useMemo(() => (video && fonteOk ? propsDaThumb(config, video, previa, icones, recorte ?? null) : null),
-    [video, fonteOk, config, previa, icones, recorte]);
+  const {camadas} = p;
+  const props = useMemo(() => (video && fonteOk
+    ? propsDaThumb(config, video, previa, icones, recorte ?? null, camadas) : null),
+  [video, fonteOk, config, previa, icones, recorte, camadas]);
   const temAlvo = daIa(config) && Boolean(config.alvo);
 
   useEffect(() => {
@@ -124,9 +140,10 @@ export const ThumbPasso: React.FC<Props> = (p) => {
     if (novos.length) mudar({tamanhos: novos});
   };
 
-  const situacaoDoRecorte = !config.recorte || !video ? ''
-    : recorte === undefined || recorte === null ? `Recortando… (na primeira vez o editor baixa o modelo, ${p.tamanhoDoRecorte})`
-      : recorte.ok ? '' : 'Não achei uma pessoa neste quadro: a thumbnail usa o quadro inteiro.';
+  const situacaoDoRecorte = camadas?.personagem ? ''
+    : !config.recorte || !video ? ''
+      : recorte === undefined || recorte === null ? `Recortando… (na primeira vez o editor baixa o modelo, ${p.tamanhoDoRecorte})`
+        : recorte.ok ? '' : 'Não achei uma pessoa neste quadro: a thumbnail usa o quadro inteiro.';
 
   return (
     <section className="passo" id="passo-thumb">
@@ -224,13 +241,14 @@ export const ThumbPasso: React.FC<Props> = (p) => {
                 </div>
               ) : null}
               {aba === 'fundo' ? (
-                <AbaFundo config={config} mudar={mudar} video={video} pexels={p.pexels} setPexels={p.setPexels}
+                <AbaFundo config={config} mudar={mudar} video={camadas?.fundo ?? video}
+                  montagem={camadas !== null} pexels={p.pexels} setPexels={p.setPexels}
                   geracao={p.geracao} setGeracao={p.setGeracao}
                   iaConfigurada={Boolean(p.painelIa?.ia.configurada)} />
               ) : null}
               {aba === 'pessoa' ? (
                 <AbaPessoa config={config} mudar={mudar} video={video} situacaoDoRecorte={situacaoDoRecorte}
-                  temAlvo={temAlvo} />
+                  temAlvo={temAlvo} personagem={Boolean(camadas?.personagem)} />
               ) : null}
               {aba === 'mao' ? <AbaMao config={config} mudar={mudar} temAlvo={temAlvo} /> : null}
               {aba === 'detalhes' ? (

@@ -71,12 +71,19 @@ class TestAsCaixas:
         """Visto com fala real: pedaços do tampo da mesa vinham junto e esticavam a
         caixa da pessoa até a borda do quadro."""
         alfa = _busto()
-        alfa[600:630, 10:60] = 0.7                  # uma mancha longe da pessoa
+        alfa[20:50, 10:60] = 0.7                    # uma mancha longe da pessoa
         limpo = recorte.so_a_pessoa(alfa)
-        assert limpo[600:630, 10:60].max() == 0.0
+        assert limpo[20:50, 10:60].max() == 0.0
         assert limpo[200, 180] == pytest.approx(1.0)          # a cabeça continua
         pessoa, _ = recorte.caixas(limpo)
-        assert pessoa.x0 > 0.1
+        assert pessoa.y0 > 0.15
+
+    def test_cabeca_separada_do_tronco_fica(self):
+        """O busto falso tem a cabeça separada dos ombros, como quando o microfone tapa o
+        pescoço. A regra antiga guardava só a cabeça, e o tronco inteiro sumia."""
+        limpo = recorte.so_a_pessoa(_busto())
+        assert limpo[205, 180] == pytest.approx(1.0)          # a cabeça
+        assert limpo[500, 180] == pytest.approx(1.0)          # o tronco
 
     def test_borda_macia_fica(self):
         alfa = _busto()

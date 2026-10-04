@@ -214,6 +214,15 @@ class Linha:
         i = self._trecho_de(t)
         return None if i is None else self._na_saida[i] + (t - self.trechos[i].ini)
 
+    def para_origem(self, t: float) -> float:
+        """O instante do vídeo original que vira ``t`` na saída (o inverso de
+        :meth:`para_saida`). Fora da linha, prende no começo ou no fim."""
+        if not self.trechos:
+            return t
+        i = max(0, bisect_right(self._na_saida, t) - 1)
+        tr = self.trechos[i]
+        return min(tr.fim, tr.ini + max(0.0, t - self._na_saida[i]))
+
     def prender(self, t: float) -> float:
         """Como :meth:`para_saida`, mas um instante cortado vai para a borda mais próxima."""
         dentro = self.para_saida(t)

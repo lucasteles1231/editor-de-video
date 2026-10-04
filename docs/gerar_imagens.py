@@ -13,7 +13,11 @@ Gera em ``docs/img/``:
 - ``banner.png``: 1280×640, que serve também de prévia social do repositório;
 - ``antes-depois.png``: o mesmo instante, original e editado;
 - ``quadro-legenda.png``, ``quadro-adesivo.png``, ``quadro-icone.png`` e
-  ``quadro-pessoa.png`` (de uma segunda edição, com a pessoa mudando de lugar);
+  ``quadro-montagem.png``. Este sai de uma montagem em camadas: o fundo é uma gravação
+  de tela do próprio editor, feita pelo Playwright, e a pessoa do exemplo vai por cima,
+  recortada pelo MODNet;
+- ``interface-montagem.png``: o passo 1 na montagem, com o fundo, um personagem de
+  palito (desenhado aqui mesmo, sem licença de ninguém) e a narração do exemplo;
 - ``interface*.png``: a página, pelo Playwright (precisa do Chromium:
   ``uv run playwright install chromium``), como ela chega para quem instala: sem chave
   nenhuma. A chave de quem gera as imagens nem é lida, porque o final dela apareceria;
@@ -61,12 +65,11 @@ S = 2
 # ── o vídeo de exemplo ─────────────────────────────────────────────────────
 
 
-def editar(exemplo: Path, pasta: Path, *, mover_pessoa: bool = False) -> tuple[Path, dict]:
+def editar(exemplo: Path, pasta: Path) -> tuple[Path, dict]:
     import json
 
-    destino = pasta / ("exemplo-movido.mp4" if mover_pessoa else "exemplo-editado.mp4")
-    r = render.editar(exemplo, destino, OpcoesDeEdicao(mover_pessoa=mover_pessoa),
-                      saida.OpcoesDeSaida())
+    destino = pasta / "exemplo-editado.mp4"
+    r = render.editar(exemplo, destino, OpcoesDeEdicao(), saida.OpcoesDeSaida())
     print(f"  editado: {r.duracao_original:.1f} s → {r.duracao_final:.1f} s")
     return r.video, json.loads(Path(r.plano).read_text(encoding="utf-8"))
 
@@ -109,6 +112,65 @@ def instantes(plano: dict) -> dict[str, float]:
             break
     return {"adesivo": adesivo["inicio"] + 0.45, "icone": icone["inicio"] + 0.55,
             "legenda": legenda_t if legenda_t is not None else plano["blocos"][1]["inicio"] + 0.3}
+
+
+def editar_montagem(exemplo: Path, tela: Path, pasta: Path) -> tuple[Path, dict]:
+    """A montagem em camadas: a gravação de tela no fundo e a pessoa do exemplo por cima,
+    recortada pelo MODNet, num quadro em pé."""
+    import json
+
+    from editor.montagem import Montagem
+
+    destino = pasta / "exemplo-montado.mp4"
+    m = Montagem(tela, pessoa=exemplo, recorte="modnet", formato="vertical")
+    r = render.editar(None, destino, OpcoesDeEdicao(), saida.OpcoesDeSaida(), montagem=m)
+    print(f"  montado: {r.duracao_final:.1f} s em {r.segundos:.0f} s")
+    return r.video, json.loads(Path(r.plano).read_text(encoding="utf-8"))
+
+
+def desenhar_palito(caminho: Path) -> Path:
+    """Um palito falando, em GIF transparente: 8 quadros, a boca e os braços mexendo."""
+    import math
+
+    quadros = []
+    largura, altura = 300, 420
+    tinta, branco = (26, 26, 26, 255), (255, 255, 255, 255)
+    for k in range(8):
+        im = Image.new("RGBA", (largura, altura), (0, 0, 0, 0))
+        d = ImageDraw.Draw(im)
+        cx, cy, r = largura // 2, 95, 62
+        braco = 20 * math.sin(k / 8 * 2 * math.pi)
+        for cor, grossura in ((tinta, 18), (branco, 10)):
+            d.ellipse((cx - r, cy - r, cx + r, cy + r), outline=cor, width=grossura)
+            d.line((cx, cy + r, cx, 290), fill=cor, width=grossura)
+            d.line((cx, 190, cx - 80, 250 + braco), fill=cor, width=grossura)
+            d.line((cx, 190, cx + 80, 230 - braco), fill=cor, width=grossura)
+            d.line((cx, 290, cx - 60, 400), fill=cor, width=grossura)
+            d.line((cx, 290, cx + 60, 400), fill=cor, width=grossura)
+        d.ellipse((cx - r + 9, cy - r + 9, cx + r - 9, cy + r - 9), fill=branco)
+        for ox in (-22, 22):
+            d.ellipse((cx + ox - 7, cy - 18, cx + ox + 7, cy - 4), fill=tinta)
+        boca = (4, 16, 8, 20, 6, 14, 3, 18)[k]
+        d.ellipse((cx - 16, cy + 20, cx + 16, cy + 20 + boca), fill=tinta)
+        quadros.append(im)
+    quadros[0].save(caminho, save_all=True, append_images=quadros[1:], duration=110, loop=0,
+                    disposal=2)
+    return caminho
+
+
+def narracao(exemplo: Path, caminho: Path) -> Path:
+    """O áudio do exemplo em WAV, como uma narração gravada à parte."""
+    import wave
+
+    import numpy as np
+
+    mono = video.ler_audio(exemplo).mean(axis=1)
+    with wave.open(str(caminho), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(video.TAXA)
+        w.writeframes((np.clip(mono, -1, 1) * 32767).astype("<i2").tobytes())
+    return caminho
 
 
 def no_movimento(plano: dict) -> float:
@@ -291,7 +353,58 @@ CARREGADAS = """() => !document.querySelector('.carregando-ideia')
   })"""
 
 
-def capturas(exemplo: Path, pasta: Path, *, ia_de_verdade: bool = False) -> None:
+def gravar_tela(exemplo: Path, pasta: Path) -> Path:
+    """Uma gravação de tela do próprio editor (o fundo sem pessoa da montagem): a página
+    abre, recebe o exemplo e rola até o fim e de volta."""
+    import shutil
+
+    import uvicorn
+    from playwright.sync_api import sync_playwright
+
+    from editor import chaves, servidor
+
+    config = chaves.pasta_de_config
+    chaves.pasta_de_config = lambda: pasta / "config"
+    porta, token = 8930, "gravacao-do-readme"
+    app = servidor.criar_app(token, porta=porta, pasta_saida=pasta / "saida-da-gravacao")
+    srv = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=porta, log_level="warning"))
+    threading.Thread(target=srv.run, daemon=True).start()
+    while not srv.started:
+        time.sleep(0.05)
+    destino = pasta / "tela.webm"
+    try:
+        with sync_playwright() as p:
+            nav = p.chromium.launch()
+            ctx = nav.new_context(viewport={"width": 1280, "height": 720},
+                                  record_video_dir=str(pasta / "gravacao"),
+                                  record_video_size={"width": 1280, "height": 720})
+            ctx.add_init_script("localStorage.setItem('editor-tour-visto', '1')")
+            pagina = ctx.new_page()
+            pagina.goto(f"http://127.0.0.1:{porta}/?t={token}")
+            pagina.wait_for_timeout(1200)
+            pagina.set_input_files("#passo-envio input[type=file]", str(exemplo))
+            pagina.locator(".ficha").wait_for(timeout=60_000)
+            pagina.wait_for_timeout(1500)
+            for _ in range(65):
+                pagina.mouse.wheel(0, 40)
+                pagina.wait_for_timeout(110)
+            for _ in range(30):
+                pagina.mouse.wheel(0, -90)
+                pagina.wait_for_timeout(110)
+            pagina.wait_for_timeout(1000)
+            gravado = pagina.video.path()
+            ctx.close()
+            nav.close()
+        shutil.copy(gravado, destino)
+    finally:
+        srv.should_exit = True
+        chaves.pasta_de_config = config
+    print("  gravação de tela do editor")
+    return destino
+
+
+def capturas(exemplo: Path, pasta: Path, *, ia_de_verdade: bool = False,
+             tela: Path | None = None, com_ideias: bool = True) -> None:
     import uvicorn
     from playwright.sync_api import sync_playwright
 
@@ -374,7 +487,30 @@ def capturas(exemplo: Path, pasta: Path, *, ia_de_verdade: bool = False) -> None
                 salvar(pagina.screenshot(), "interface-resultado.png")
                 ctx.close()
 
+            # O passo 1 na montagem: o fundo, o personagem de palito e a narração.
+            if tela is not None:
+                ctx = nav.new_context(viewport={"width": 1280, "height": 1400},
+                                      device_scale_factor=2, color_scheme="light")
+                ctx.add_init_script(sem_tour)
+                pagina = ctx.new_page()
+                pagina.goto(url)
+                pagina.get_by_role("button", name="Um fundo e, por cima").click()
+                pagina.set_input_files('[data-envio="fundo"] input', str(tela))
+                pagina.get_by_label("dados do fundo").wait_for(timeout=60_000)
+                pagina.get_by_role("button", name="Personagem animado").click()
+                pagina.set_input_files('[data-envio="personagem"] input',
+                                       str(desenhar_palito(pasta / "palito.gif")))
+                pagina.get_by_label("dados do personagem").wait_for(timeout=60_000)
+                pagina.set_input_files('[data-envio="audio"] input',
+                                       str(narracao(exemplo, pasta / "narracao.wav")))
+                pagina.get_by_label("dados da narração").wait_for(timeout=60_000)
+                pagina.wait_for_timeout(1200)
+                salvar(pagina.locator("#passo-envio").screenshot(), "interface-montagem.png", 1200)
+                ctx.close()
+
             # A thumbnail com IA: as três ideias e a prévia com as abas.
+            if not com_ideias:
+                return
             if ia_de_verdade:
                 chaves.pasta_de_config = config_de_verdade
             else:
@@ -450,6 +586,8 @@ def main() -> int:
     ap.add_argument("--sem-capturas", action="store_true", help="pula as capturas da página")
     ap.add_argument("--ia-de-verdade", action="store_true",
                     help="as ideias de thumbnail vêm do Gemini, com a chave salva no editor")
+    ap.add_argument("--sem-ideias", action="store_true",
+                    help="não refaz as capturas das ideias de thumbnail (guarda a cota)")
     args = ap.parse_args()
     IMG.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
@@ -462,12 +600,14 @@ def main() -> int:
             pequeno = im.resize((540, round(540 * im.height / im.width)), Image.LANCZOS)
             arredondar(pequeno, 22).save(IMG / f"quadro-{k}.png", optimize=True)
             print(f"  quadro-{k}.png")
-        movido, plano_movido = editar(args.exemplo, pasta, mover_pessoa=True)
-        quadros["pessoa"] = quadro(movido, no_movimento(plano_movido))
-        pequeno = quadros["pessoa"].resize((540, round(540 * quadros["pessoa"].height
-                                                       / quadros["pessoa"].width)), Image.LANCZOS)
-        arredondar(pequeno, 22).save(IMG / "quadro-pessoa.png", optimize=True)
-        print("  quadro-pessoa.png")
+        tela = gravar_tela(args.exemplo, pasta)
+        montado, plano_montado = editar_montagem(args.exemplo, tela, pasta)
+        quadros["montagem"] = quadro(montado, no_movimento(plano_montado))
+        montagem_ = quadros["montagem"]
+        pequeno = montagem_.resize((540, round(540 * montagem_.height / montagem_.width)),
+                                   Image.LANCZOS)
+        arredondar(pequeno, 22).save(IMG / "quadro-montagem.png", optimize=True)
+        print("  quadro-montagem.png")
         original = quadro(args.exemplo, no_original(ts["adesivo"], plano["trechos"]))
         antes_depois(original, quadros["adesivo"]).save(IMG / "antes-depois.png", optimize=True)
         print("  antes-depois.png")
@@ -475,7 +615,8 @@ def main() -> int:
         print("  banner.png")
         icones_das_funcoes()
         if not args.sem_capturas:
-            capturas(args.exemplo, pasta, ia_de_verdade=args.ia_de_verdade)
+            capturas(args.exemplo, pasta, ia_de_verdade=args.ia_de_verdade, tela=tela,
+                     com_ideias=not args.sem_ideias)
     return 0
 
 

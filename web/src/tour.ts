@@ -27,7 +27,7 @@ export function comecarTour(): void {
           side: 'right',
           align: 'start',
           title: '1. Envie o vídeo',
-          description: 'Arraste um vídeo falado (vertical ou horizontal). Ele é copiado para uma pasta do seu computador — nada vai para a internet.',
+          description: 'Arraste um vídeo falado (vertical ou horizontal). Ou monte em camadas: um fundo sem pessoa e, por cima, o vídeo da pessoa ou um personagem animado. Tudo é copiado para uma pasta do seu computador — nada vai para a internet.',
         },
       },
       {

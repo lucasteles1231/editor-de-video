@@ -83,17 +83,12 @@ def test_tour_edicao_e_thumbnail(navegador, endereco, tmp_path):
     video = fazer_video(tmp_path / "meu video.mp4", segundos=4.0)
     pagina.set_input_files("#passo-envio input[type=file]", str(video))
     pagina.locator(".ficha").wait_for(timeout=20_000)
-    # Mover a pessoa, com fundo de cor: as escolhas chegam ao servidor.
-    pagina.locator("label.interruptor", has_text="Mover a pessoa").click()
-    pagina.get_by_role("button", name="Uma cor").click()
-    pagina.get_by_role("button", name="lima", exact=True).click()
-    expect(pagina.locator(".mover-pessoa .custo")).to_contain_text("mais lenta")
+    # No vídeo único, mover a pessoa não aparece: só a montagem tem para onde levá-la.
+    expect(pagina.locator("label.interruptor", has_text="Mover a pessoa")).to_have_count(0)
     with pagina.expect_request(lambda r: r.url.split("?")[0].endswith("/api/tarefas")
                                and r.method == "POST") as pedido:
         pagina.get_by_role("button", name="Editar vídeo").click()
-    edicao = pedido.value.post_data_json["edicao"]
-    assert (edicao["mover_pessoa"], edicao["fundo_da_pessoa"], edicao["cor_do_fundo"]) == (
-        True, "cor", "lima")
+    assert "video_id" in pedido.value.post_data_json
     pagina.locator(".miniaturas img").first.wait_for(timeout=120_000)
 
     # as três ideias viram cartões, e a primeira já é a thumbnail
@@ -166,3 +161,45 @@ def test_tour_edicao_e_thumbnail(navegador, endereco, tmp_path):
     pagina.get_by_role("button", name="Cor", exact=True).click()
     expect(imagem_no_fundo).not_to_be_attached()
     assert erros == [], erros
+
+
+def test_montagem_com_personagem_e_narracao(navegador, endereco, tmp_path):
+    """Um fundo sem pessoa, um personagem animado por cima e a narração à parte."""
+    from tests.conftest import ler_info
+    from tests.test_montagem import audio_wav, gif
+
+    pagina = navegador.new_page(viewport={"width": 1366, "height": 900})
+    pagina.add_init_script("localStorage.setItem('editor-tour-visto', '1')")
+    erros: list[str] = []
+    pagina.on("pageerror", lambda e: erros.append(str(e)))
+    pagina.on("console", lambda m: m.type == "error" and erros.append(m.text))
+    pagina.goto(endereco)
+
+    pagina.get_by_role("button", name="Um fundo e, por cima").click()
+    fundo = fazer_video(tmp_path / "tela.mp4", largura=320, altura=180, segundos=3.0,
+                        com_audio=False)
+    pagina.set_input_files('[data-envio="fundo"] input', str(fundo))
+    expect(pagina.get_by_label("dados do fundo")).to_contain_text("320×180")
+    pagina.get_by_role("button", name="Personagem animado").click()
+    pagina.set_input_files('[data-envio="personagem"] input', str(gif(tmp_path / "b.gif", lado=80)))
+    expect(pagina.get_by_label("dados do personagem")).to_contain_text("4 quadros")
+    expect(pagina.locator(".tela-montada .por-cima")).to_be_attached()
+    pagina.set_input_files('[data-envio="audio"] input', str(audio_wav(tmp_path / "n.wav")))
+    expect(pagina.get_by_label("dados da narração")).to_contain_text("n.wav")
+    # a montagem tem o "Mover o personagem" e o formato do quadro
+    expect(pagina.locator("label.interruptor", has_text="Mover o personagem")).to_have_count(1)
+    pagina.get_by_role("button", name="Em pé (9:16)").click()
+
+    with pagina.expect_request(lambda r: r.url.split("?")[0].endswith("/api/tarefas")
+                               and r.method == "POST") as pedido:
+        pagina.get_by_role("button", name="Editar vídeo").click()
+    montagem = pedido.value.post_data_json["montagem"]
+    assert montagem["formato"] == "vertical"
+    assert montagem["personagem_id"] and montagem["audio_id"] and "pessoa_id" not in montagem
+    pagina.locator(".miniaturas img").first.wait_for(timeout=120_000)
+
+    saida = tmp_path / "saida"
+    editado = next(saida.glob("tela-editado.mp4"))
+    assert (ler_info(editado)["largura"], ler_info(editado)["altura"]) == (180, 320)
+    assert list(saida.glob("*-thumb-1280x720.png"))
+    assert not erros, erros

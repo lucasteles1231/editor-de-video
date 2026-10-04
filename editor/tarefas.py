@@ -16,6 +16,7 @@ from pathlib import Path
 
 from editor import render
 from editor import saida as saida_mod
+from editor.montagem import Montagem
 from editor.opcoes import OpcoesDeEdicao
 
 #: Quanto cada etapa pesa na barra de progresso (início, fim).
@@ -32,11 +33,14 @@ class Ocupado(Exception):
 
 @dataclass
 class Tarefa:
+    #: O vídeo da thumbnail: o vídeo único, ou, na montagem, o da pessoa (com o
+    #: personagem, o do fundo).
     video: Path
     destino: Path
     edicao: OpcoesDeEdicao
     saida: saida_mod.OpcoesDeSaida
     previa_s: float | None = None
+    montagem: Montagem | None = None
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     estado: str = "rodando"            # rodando | pronto | erro | cancelado
     etapa: str = "transcrevendo"
@@ -95,8 +99,9 @@ class Gerente:
             t.versao += 1
 
         try:
-            r = render.editar(t.video, t.destino, t.edicao, t.saida, previa_s=t.previa_s,
-                              progresso=progresso, cancelar=t.cancelar.is_set)
+            r = render.editar(None if t.montagem is not None else t.video, t.destino,
+                              t.edicao, t.saida, previa_s=t.previa_s, progresso=progresso,
+                              cancelar=t.cancelar.is_set, montagem=t.montagem)
             t.resultado = r.para_dict()
             t.estado, t.etapa, t.fracao = "pronto", "pronto", 1.0
         except render.Cancelado:

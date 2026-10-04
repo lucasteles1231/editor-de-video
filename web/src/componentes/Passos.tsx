@@ -2,9 +2,11 @@
  * Os quatro primeiros passos: enviar, edições, legenda e saída.
  */
 import React, {useRef, useState} from 'react';
+import {api} from '../api';
 import {bytes, duracao, numero} from '../formatar';
-import {PALETA} from '../thumb/Thumb';
-import type {Cor, Edicao, Estado, Saida, VideoInfo} from '../tipos';
+import type {
+  AudioInfo, Edicao, Estado, FormatoDoQuadro, Modo, MontagemConfig, PersonagemInfo, PorCima, Saida, VideoInfo,
+} from '../tipos';
 import {Interruptor} from './Interruptor';
 
 const Cabeca: React.FC<{n: number; titulo: string; texto: string}> = ({n, titulo, texto}) => (
@@ -19,12 +21,17 @@ const Cabeca: React.FC<{n: number; titulo: string; texto: string}> = ({n, titulo
 
 // ── 1. Enviar ────────────────────────────────────────────────────────────
 
-export const PassoEnvio: React.FC<{
-  video: VideoInfo | null;
-  progresso: number | null;
-  erro: string;
-  aoEscolher: (arquivo: File) => void;
-}> = ({video, progresso, erro, aoEscolher}) => {
+/** O que se envia: o vídeo único ou uma das camadas da montagem. */
+export type Envio = 'video' | 'fundo' | 'pessoa' | 'personagem' | 'audio';
+
+/** O custo de recortar a pessoa no vídeo inteiro pelo MODNet, medido num Apple M5 em
+ *  04/10/2026: uns 0,07 s por quadro (um vídeo de 27 s a 25 fps levou uns 31 s a mais). */
+const CUSTO_DO_RECORTE_POR_QUADRO = 0.07;
+
+const Soltar: React.FC<{
+  rotulo: string; dica: string; aceita: string; progresso: number | null;
+  aoEscolher: (arquivo: File) => void; grande?: boolean; nome: string;
+}> = ({rotulo, dica, aceita, progresso, aoEscolher, grande, nome}) => {
   const entrada = useRef<HTMLInputElement>(null);
   const [arrastando, setArrastando] = useState(false);
   const soltar = (e: React.DragEvent) => {
@@ -34,92 +41,198 @@ export const PassoEnvio: React.FC<{
     if (arquivo) aoEscolher(arquivo);
   };
   return (
-    <section className="passo" id="passo-envio">
-      <Cabeca n={1} titulo="Envie o vídeo"
-        texto="O arquivo é copiado para uma pasta do seu computador — não vai para a internet." />
-      <div className={`envio${arrastando ? ' arrastando' : ''}`} role="button" tabIndex={0}
-        onClick={() => entrada.current?.click()}
-        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && entrada.current?.click()}
-        onDragOver={(e) => { e.preventDefault(); setArrastando(true); }}
-        onDragLeave={() => setArrastando(false)} onDrop={soltar}>
+    <div className={`envio${grande ? '' : ' pequena'}${arrastando ? ' arrastando' : ''}`} role="button" tabIndex={0}
+      aria-label={rotulo} data-envio={nome}
+      onClick={() => entrada.current?.click()}
+      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && entrada.current?.click()}
+      onDragOver={(e) => { e.preventDefault(); setArrastando(true); }}
+      onDragLeave={() => setArrastando(false)} onDrop={soltar}>
+      {grande ? (
         <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor"
           strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M14 3v4a1 1 0 0 0 1 1h4" />
           <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z" />
           <path d="M10 11l4 2.5l-4 2.5z" />
         </svg>
-        <strong>{progresso !== null ? `Enviando… ${numero(progresso * 100)}%` : 'Arraste o vídeo aqui'}</strong>
-        <small>ou clique para escolher · MP4, MOV, MKV, WebM…</small>
-        <input ref={entrada} type="file" accept="video/*,.mkv,.mov" hidden
-          onChange={(e) => e.target.files?.[0] && aoEscolher(e.target.files[0])} />
-      </div>
-      {erro ? <div className="aviso erro">{erro}</div> : null}
-      {video ? (
-        <div className="ficha" aria-label="dados do vídeo">
-          <span className="etiqueta">{video.nome}</span>
-          <span className="etiqueta">{video.largura}×{video.altura}</span>
-          <span className="etiqueta">{video.vertical ? 'vertical' : 'horizontal'}</span>
-          <span className="etiqueta">{duracao(video.duracao)}</span>
-          <span className="etiqueta">{numero(video.fps, video.fps % 1 ? 2 : 0)} fps</span>
-          <span className="etiqueta">{bytes(video.tamanho_bytes)}</span>
-          {!video.tem_audio ? <span className="etiqueta">sem áudio</span> : null}
-        </div>
       ) : null}
-    </section>
-  );
-};
-
-// ── 2. Edições ───────────────────────────────────────────────────────────
-
-/** O custo de mover a pessoa, medido num Apple M5 em 03/10/2026: o quadro recortado custa
- * uns 0,06 s a mais que o normal, a pessoa sai do lugar em uns 26% do vídeo editado, e ele
- * fica com uns 70% do original. Deu +8 s num vídeo de 27 s e +21 s num de 1 min 46 s. */
-const CUSTO_POR_SEGUNDO_E_FPS = 0.06 * 0.26 * 0.7;
-
-const CORES_DO_FUNDO = Object.keys(PALETA) as Cor[];
-
-const MoverPessoa: React.FC<{
-  edicao: Edicao; mudar: (p: Partial<Edicao>) => void; video: VideoInfo | null;
-  recorte: {baixado: boolean; tamanho: string};
-}> = ({edicao, mudar, video, recorte}) => {
-  const extra = video ? video.duracao * video.fps * CUSTO_POR_SEGUNDO_E_FPS : 0;
-  return (
-    <div className="mover-pessoa">
-      <div className="campo">
-        <span>Atrás da pessoa</span>
-        <div className="linha-de-opcoes" role="group" aria-label="fundo atrás da pessoa">
-          <button type="button" className="pilula" aria-pressed={edicao.fundo_da_pessoa === 'video'}
-            onClick={() => mudar({fundo_da_pessoa: 'video'})}>O vídeo desfocado</button>
-          <button type="button" className="pilula" aria-pressed={edicao.fundo_da_pessoa === 'cor'}
-            onClick={() => mudar({fundo_da_pessoa: 'cor'})}>Uma cor</button>
-        </div>
-      </div>
-      {edicao.fundo_da_pessoa === 'cor' ? (
-        <div className="campo">
-          <span>Cor do fundo</span>
-          <div className="cores" role="group" aria-label="cor do fundo">
-            {CORES_DO_FUNDO.map((c) => (
-              <button key={c} type="button" aria-pressed={edicao.cor_do_fundo === c} aria-label={c} title={c}
-                style={{background: PALETA[c]}} onClick={() => mudar({cor_do_fundo: c})} />
-            ))}
-          </div>
-        </div>
-      ) : null}
-      <small className="custo">
-        {video
-          ? `Deixa a edição deste vídeo uns ${duracao(Math.max(5, extra))} mais lenta num computador como um MacBook M5,`
-            + ' porque a pessoa é recortada quadro a quadro nesses trechos.'
-          : 'Deixa a edição mais lenta, porque a pessoa é recortada quadro a quadro nesses trechos.'}
-        {recorte.baixado ? '' : ` Na primeira vez, o editor baixa o modelo de recorte (${recorte.tamanho}).`}
-      </small>
+      <strong>{progresso !== null ? `Enviando… ${numero(progresso * 100)}%` : rotulo}</strong>
+      <small>{dica}</small>
+      <input ref={entrada} type="file" accept={aceita} hidden
+        onChange={(e) => e.target.files?.[0] && aoEscolher(e.target.files[0])} />
     </div>
   );
 };
 
-export const PassoEdicoes: React.FC<{
-  edicao: Edicao; mudar: (p: Partial<Edicao>) => void; video: VideoInfo | null;
+const FichaDoVideo: React.FC<{video: VideoInfo; rotulo?: string}> = ({video, rotulo = 'dados do vídeo'}) => (
+  <div className="ficha" aria-label={rotulo}>
+    <span className="etiqueta">{video.nome}</span>
+    <span className="etiqueta">{video.largura}×{video.altura}</span>
+    <span className="etiqueta">{video.vertical ? 'vertical' : 'horizontal'}</span>
+    <span className="etiqueta">{duracao(video.duracao)}</span>
+    <span className="etiqueta">{numero(video.fps, video.fps % 1 ? 2 : 0)} fps</span>
+    <span className="etiqueta">{bytes(video.tamanho_bytes)}</span>
+    {!video.tem_audio ? <span className="etiqueta">sem áudio</span> : null}
+    {video.tem_alfa ? <span className="etiqueta">com transparência</span> : null}
+  </div>
+);
+
+export type PropsDoEnvio = {
+  modo: Modo;
+  setModo: (m: Modo) => void;
+  video: VideoInfo | null;
+  fundo: VideoInfo | null;
+  pessoa: VideoInfo | null;
+  personagem: PersonagemInfo | null;
+  audio: AudioInfo | null;
+  montagem: MontagemConfig;
+  mudarMontagem: (p: Partial<MontagemConfig>) => void;
+  progresso: Record<Envio, number | null>;
+  erro: Record<Envio, string>;
+  aoEscolher: (qual: Envio, arquivo: File) => void;
+  aoTirarAudio: () => void;
   recorte: {baixado: boolean; tamanho: string};
-}> = ({edicao, mudar, video, recorte}) => (
+};
+
+const Aviso: React.FC<{texto: string}> = ({texto}) => (texto ? <div className="aviso erro">{texto}</div> : null);
+
+const EnvioDaMontagem: React.FC<PropsDoEnvio> = (p) => {
+  const m = p.montagem;
+  const fala = m.porCima === 'pessoa' && p.pessoa?.tem_audio ? 'do vídeo da pessoa'
+    : p.fundo?.tem_audio ? 'do vídeo de fundo' : '';
+  const custo = p.pessoa ? p.pessoa.duracao * p.pessoa.fps * CUSTO_DO_RECORTE_POR_QUADRO : 0;
+  return (
+    <div className="camadas">
+      <div className="camada">
+        <strong>O vídeo de fundo</strong>
+        <small>Sem pessoa: a tela gravada, o jogo, os slides.</small>
+        <Soltar nome="fundo" rotulo="Arraste o fundo aqui" dica="ou clique · MP4, MOV, MKV, WebM…"
+          aceita="video/*,.mkv,.mov" progresso={p.progresso.fundo} aoEscolher={(f) => p.aoEscolher('fundo', f)} />
+        <Aviso texto={p.erro.fundo} />
+        {p.fundo ? <FichaDoVideo video={p.fundo} rotulo="dados do fundo" /> : null}
+      </div>
+
+      <div className="camada">
+        <strong>Por cima</strong>
+        <div className="linha-de-opcoes" role="group" aria-label="o que vai por cima">
+          {([['pessoa', 'Vídeo da pessoa'], ['personagem', 'Personagem animado']] as [PorCima, string][]).map(([v, nome]) => (
+            <button key={v} type="button" className="pilula" aria-pressed={m.porCima === v}
+              onClick={() => p.mudarMontagem({porCima: v})}>{nome}</button>
+          ))}
+        </div>
+        {m.porCima === 'pessoa' ? (
+          <>
+            <Soltar nome="pessoa" rotulo="Arraste o vídeo da pessoa" dica="você falando · MP4, MOV, WebM…"
+              aceita="video/*,.mkv,.mov,.webm" progresso={p.progresso.pessoa}
+              aoEscolher={(f) => p.aoEscolher('pessoa', f)} />
+            <Aviso texto={p.erro.pessoa} />
+            {p.pessoa ? (
+              <>
+                <FichaDoVideo video={p.pessoa} rotulo="dados do vídeo da pessoa" />
+                <div className="campo">
+                  <span>Tirar o fundo da pessoa</span>
+                  <div className="linha-de-opcoes" role="group" aria-label="como tirar o fundo da pessoa">
+                    <button type="button" className="pilula" aria-pressed={m.recorte === 'transparente'}
+                      disabled={!p.pessoa.tem_alfa} onClick={() => p.mudarMontagem({recorte: 'transparente'})}>
+                      Já vem sem fundo
+                    </button>
+                    <button type="button" className="pilula" aria-pressed={m.recorte === 'modnet'}
+                      onClick={() => p.mudarMontagem({recorte: 'modnet'})}>Recortar com o MODNet</button>
+                  </div>
+                  <small className="custo">
+                    {m.recorte === 'transparente'
+                      ? 'O arquivo tem transparência: o recorte é o dele, sem custo nenhum.'
+                      : `Recorta o vídeo inteiro no seu computador: uns ${duracao(Math.max(5, custo))} a mais num `
+                        + 'MacBook M5.'
+                        + (p.recorte.baixado ? '' : ` Na primeira vez, o editor baixa o modelo (${p.recorte.tamanho}).`)
+                        + (p.pessoa.tem_alfa ? ''
+                          : ' Para não esperar, exporte o vídeo já sem fundo, em WebM VP9 ou MOV ProRes 4444.')}
+                  </small>
+                </div>
+              </>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <Soltar nome="personagem" rotulo="Arraste o personagem" dica="GIF, PNG animado ou WebP, em loop"
+              aceita="image/gif,image/png,image/webp,.gif,.png,.webp,.apng" progresso={p.progresso.personagem}
+              aoEscolher={(f) => p.aoEscolher('personagem', f)} />
+            <Aviso texto={p.erro.personagem} />
+            {p.personagem ? (
+              <div className="personagem">
+                <img src={api.personagemArquivoUrl(p.personagem.id)} alt={`o personagem ${p.personagem.nome}`} />
+                <div className="ficha" aria-label="dados do personagem">
+                  <span className="etiqueta">{p.personagem.nome}</span>
+                  <span className="etiqueta">{p.personagem.largura}×{p.personagem.altura}</span>
+                  <span className="etiqueta">{p.personagem.quadros} quadros</span>
+                  <span className="etiqueta">{duracao(p.personagem.duracao)} em loop</span>
+                  <span className="etiqueta">{p.personagem.tem_alfa ? 'transparente' : 'com fundo'}</span>
+                </div>
+                {!p.personagem.tem_alfa ? (
+                  <Interruptor ligado={m.tirarFundo && p.personagem.fundo_de_cor} desabilitado={!p.personagem.fundo_de_cor}
+                    aoMudar={(v) => p.mudarMontagem({tirarFundo: v})} titulo="Tirar o fundo de cor dele"
+                    descricao={p.personagem.fundo_de_cor ? 'Os quatro cantos têm a mesma cor, e ela some.'
+                      : 'Os cantos têm cores diferentes: não dá para saber qual é o fundo.'} />
+                ) : null}
+              </div>
+            ) : null}
+          </>
+        )}
+      </div>
+
+      <div className="camada">
+        <strong>Narração à parte <span className="etiqueta">opcional</span></strong>
+        <small>
+          {p.audio ? 'A fala vem da narração: dela saem a legenda e os cortes.'
+            : fala ? `Sem ela, a fala vem ${fala}.`
+              : 'Sem ela, não há fala nenhuma: o vídeo sai sem cortes e sem legenda.'}
+        </small>
+        {p.audio ? (
+          <div className="ficha" aria-label="dados da narração">
+            <span className="etiqueta">{p.audio.nome}</span>
+            <span className="etiqueta">{duracao(p.audio.duracao)}</span>
+            <button type="button" className="botao pequeno" onClick={p.aoTirarAudio}>Tirar a narração</button>
+          </div>
+        ) : (
+          <Soltar nome="audio" rotulo="Arraste a narração" dica="MP3, WAV, M4A…" aceita="audio/*,.mp3,.wav,.m4a"
+            progresso={p.progresso.audio} aoEscolher={(f) => p.aoEscolher('audio', f)} />
+        )}
+        <Aviso texto={p.erro.audio} />
+      </div>
+    </div>
+  );
+};
+
+export const PassoEnvio: React.FC<PropsDoEnvio> = (p) => (
+  <section className="passo" id="passo-envio">
+    <Cabeca n={1} titulo="Envie o vídeo"
+      texto="Os arquivos são copiados para uma pasta do seu computador — não vão para a internet." />
+    <div className="linha-de-opcoes modos" role="group" aria-label="como é o seu vídeo">
+      <button type="button" className="pilula" aria-pressed={p.modo === 'um'} onClick={() => p.setModo('um')}>
+        Um vídeo com você falando
+      </button>
+      <button type="button" className="pilula" aria-pressed={p.modo === 'montagem'}
+        onClick={() => p.setModo('montagem')}>Um fundo e, por cima, você ou um personagem</button>
+    </div>
+    {p.modo === 'um' ? (
+      <>
+        <Soltar grande nome="video" rotulo="Arraste o vídeo aqui" dica="ou clique para escolher · MP4, MOV, MKV, WebM…"
+          aceita="video/*,.mkv,.mov" progresso={p.progresso.video} aoEscolher={(f) => p.aoEscolher('video', f)} />
+        <Aviso texto={p.erro.video} />
+        {p.video ? <FichaDoVideo video={p.video} /> : null}
+      </>
+    ) : (
+      <EnvioDaMontagem {...p} />
+    )}
+  </section>
+);
+
+// ── 2. Edições ───────────────────────────────────────────────────────────
+
+export const PassoEdicoes: React.FC<{
+  edicao: Edicao; mudar: (p: Partial<Edicao>) => void;
+  /** Na montagem, o que vai por cima (e pode mudar de lugar); ``null`` no vídeo único. */
+  porCima: PorCima | null;
+}> = ({edicao, mudar, porCima}) => (
   <section className="passo" id="passo-edicoes">
     <Cabeca n={2} titulo="Escolha as edições"
       texto="Tudo decidido por regras, sem IA na nuvem: o mesmo vídeo sai sempre igual." />
@@ -134,10 +247,12 @@ export const PassoEdicoes: React.FC<{
         descricao="Quando a fala cita “dinheiro”, “celular”, “foguete”… o ícone aparece." />
       <Interruptor ligado={edicao.sons} aoMudar={(v) => mudar({sons: v})} titulo="Efeitos sonoros"
         descricao="Um pop quando algo aparece, um whoosh quando o zoom troca ou a pessoa muda de lugar." />
-      <Interruptor ligado={edicao.mover_pessoa} aoMudar={(v) => mudar({mover_pessoa: v})} titulo="Mover a pessoa"
-        descricao="Em alguns cortes, a pessoa recortada vai para um lado, para cima, para baixo, para perto ou para longe." />
+      {porCima ? (
+        <Interruptor ligado={edicao.mover} aoMudar={(v) => mudar({mover: v})}
+          titulo={porCima === 'personagem' ? 'Mover o personagem' : 'Mover a pessoa'}
+          descricao="Em alguns cortes, vai para um lado, para o meio, para cima, para baixo, para perto ou para longe." />
+      ) : null}
     </div>
-    {edicao.mover_pessoa ? <MoverPessoa edicao={edicao} mudar={mudar} video={video} recorte={recorte} /> : null}
     <div className="campos">
       <label className="campo">
         <span>Pausa máxima: {numero(edicao.pausa_maxima, 2)} s</span>
@@ -222,9 +337,14 @@ function ladoCurto(video: VideoInfo | null) {
   return video ? Math.min(video.largura, video.altura) : Infinity;
 }
 
+const FORMATOS_DO_QUADRO: [FormatoDoQuadro, string][] = [['fundo', 'Igual ao fundo'], ['vertical', 'Em pé (9:16)'],
+  ['horizontal', 'Deitado (16:9)'], ['quadrado', 'Quadrado']];
+
 export const PassoSaida: React.FC<{
   estado: Estado; saida: Saida; video: VideoInfo | null; mudar: (p: Partial<Saida>) => void;
-}> = ({estado, saida, video, mudar}) => {
+  /** Na montagem, o formato do quadro final (o fundo é encaixado nele). */
+  quadro?: {valor: FormatoDoQuadro; mudar: (f: FormatoDoQuadro) => void} | null;
+}> = ({estado, saida, video, mudar, quadro}) => {
   const formatos = Object.keys(estado.formatos);
   const codecs = estado.formatos[saida.formato]?.codecs ?? [];
   const curto = ladoCurto(video);
@@ -236,6 +356,18 @@ export const PassoSaida: React.FC<{
     <section className="passo" id="passo-saida">
       <Cabeca n={4} titulo="Saída"
         texto="Só aparece o que este computador consegue gravar." />
+      {quadro ? (
+        <div className="campo">
+          <span>Formato do quadro</span>
+          <div className="linha-de-opcoes" role="group" aria-label="formato do quadro">
+            {FORMATOS_DO_QUADRO.map(([f, nome]) => (
+              <button key={f} type="button" className="pilula" aria-pressed={quadro.valor === f}
+                onClick={() => quadro.mudar(f)}>{nome}</button>
+            ))}
+          </div>
+          <small>O fundo entra inteiro, e as sobras ficam com ele mesmo, desfocado.</small>
+        </div>
+      ) : null}
       <div className="campo">
         <span>Formato</span>
         <div className="linha-de-opcoes" role="group" aria-label="formato">
