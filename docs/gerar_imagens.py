@@ -14,12 +14,17 @@ Gera em ``docs/img/``:
 - ``antes-depois.png``: o mesmo instante, original e editado;
 - ``quadro-legenda.png``, ``quadro-adesivo.png`` e ``quadro-icone.png``;
 - ``interface*.png``: a página, pelo Playwright (precisa do Chromium:
-  ``uv run playwright install chromium``);
+  ``uv run playwright install chromium``), como ela chega para quem instala: sem chave
+  nenhuma. A chave de quem gera as imagens nem é lida, porque o final dela apareceria;
+- ``thumb-ideias.png`` e ``thumb-abas.png``: as ideias de thumbnail e a prévia com as
+  abas. Saem da IA de teste; com ``--ia-de-verdade``, do Gemini, com a chave salva no
+  editor (gasta um ou dois pedidos da cota);
 - ``funcoes/*.svg``: os ícones das funções, do Tabler (baixados do unpkg).
 """
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 import tempfile
@@ -257,12 +262,29 @@ def antes_depois(antes: Image.Image, depois: Image.Image) -> Image.Image:
 # ── as capturas da interface ───────────────────────────────────────────────
 
 
-def capturas(exemplo: Path, pasta: Path) -> None:
+#: Todas as imagens das prévias já chegaram (o recorte e o quadro levam segundos logo
+#: depois da edição, e a captura saía com a pessoa faltando). Um cartão ainda esperando
+#: o recorte não tem imagem nenhuma, então ele precisa ter sido desenhado antes.
+CARREGADAS = """() => !document.querySelector('.carregando-ideia')
+  && [...document.querySelectorAll('.ideia')].every((b) => b.querySelector('svg'))
+  && [...document.querySelectorAll('.ideias svg image, .thumb-area svg image')].every((i) => {
+    const href = i.getAttribute('href') || '';
+    if (!href || href.startsWith('data:')) return true;
+    const url = new URL(href, location.href).href;
+    return performance.getEntriesByName(url).some((e) => e.responseEnd > 0);
+  })"""
+
+
+def capturas(exemplo: Path, pasta: Path, *, ia_de_verdade: bool = False) -> None:
     import uvicorn
     from playwright.sync_api import sync_playwright
 
-    from editor import servidor
+    from editor import chaves, servidor
 
+    config_de_verdade = chaves.pasta_de_config
+    chaves.pasta_de_config = lambda: pasta / "config"
+    for nome in ("GEMINI_API_KEY", "PEXELS_API_KEY", "EDITOR_IA", "EDITOR_PEXELS"):
+        os.environ.pop(nome, None)
     porta, token = 8931, "imagens-do-readme"
     app = servidor.criar_app(token, porta=porta, pasta_saida=pasta / "saida")
     srv = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=porta, log_level="warning"))
@@ -270,7 +292,8 @@ def capturas(exemplo: Path, pasta: Path) -> None:
     while not srv.started:
         time.sleep(0.05)
     url = f"http://127.0.0.1:{porta}/?t={token}"
-    sem_tour = "localStorage.setItem('editor-tour-visto', '1')"
+    sem_tour = ("localStorage.setItem('editor-tour-visto', '1');"
+                "performance.setResourceTimingBufferSize(10000);")
 
     def salvar(png: bytes, nome: str, largura: int = 1600) -> None:
         caminho = IMG / nome
@@ -334,7 +357,37 @@ def capturas(exemplo: Path, pasta: Path) -> None:
                 pagina.wait_for_timeout(800)
                 salvar(pagina.screenshot(), "interface-resultado.png")
                 ctx.close()
+
+            # A thumbnail com IA: as três ideias e a prévia com as abas.
+            if ia_de_verdade:
+                chaves.pasta_de_config = config_de_verdade
+            else:
+                os.environ["EDITOR_IA"] = "falsa"
+            ctx = nav.new_context(viewport={"width": 1280, "height": 1500},
+                                  device_scale_factor=2, color_scheme="light")
+            ctx.add_init_script(sem_tour)
+            pagina = ctx.new_page()
+            enviar(pagina)
+            pagina.get_by_role("button", name="Editar vídeo").click()
+            pagina.wait_for_function(
+                "document.querySelectorAll('.ideia').length === 3"
+                " || document.querySelector('.painel-ia .aviso.erro')", timeout=300_000)
+            erro = pagina.locator(".painel-ia .aviso.erro")
+            if erro.count():
+                raise SystemExit(f"o Gemini não deu ideias: {erro.first.inner_text()}")
+            pagina.locator("#painel-ia").scroll_into_view_if_needed()
+            pagina.wait_for_function(CARREGADAS, timeout=120_000)
+            pagina.wait_for_timeout(800)
+            salvar(pagina.locator(".ideias").screenshot(), "thumb-ideias.png")
+            pagina.get_by_role("tab", name="Fundo").click()
+            pagina.locator(".thumb-area").scroll_into_view_if_needed()
+            pagina.wait_for_function(CARREGADAS, timeout=120_000)
+            pagina.wait_for_timeout(800)
+            salvar(pagina.locator(".thumb-area").screenshot(), "thumb-abas.png")
+            ctx.close()
         finally:
+            chaves.pasta_de_config = config_de_verdade
+            os.environ.pop("EDITOR_IA", None)
             nav.close()
             srv.should_exit = True
 
@@ -378,6 +431,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0].strip())
     ap.add_argument("exemplo", type=Path, help="um vídeo com fala")
     ap.add_argument("--sem-capturas", action="store_true", help="pula as capturas da página")
+    ap.add_argument("--ia-de-verdade", action="store_true",
+                    help="as ideias de thumbnail vêm do Gemini, com a chave salva no editor")
     args = ap.parse_args()
     IMG.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
@@ -397,7 +452,7 @@ def main() -> int:
         print("  banner.png")
         icones_das_funcoes()
         if not args.sem_capturas:
-            capturas(args.exemplo, pasta)
+            capturas(args.exemplo, pasta, ia_de_verdade=args.ia_de_verdade)
     return 0
 
 

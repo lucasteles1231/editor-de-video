@@ -63,7 +63,7 @@ export function comecarTour(): void {
           side: 'right',
           align: 'start',
           title: '5. Thumbnail',
-          description: 'Liga e desliga uma capa separada: título com a palavra em destaque, quadro de fundo, ícone e tamanhos para YouTube e Shorts. A prévia é ao vivo.',
+          description: 'Uma capa separada, com a pessoa recortada, a chamada e a palavra em destaque. Com uma chave do Gemini (opcional), a IA sugere 3 ideias de acordo com o que você falou. A prévia é ao vivo.',
         },
       },
       {

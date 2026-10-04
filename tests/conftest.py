@@ -1,10 +1,15 @@
 """
 O que os testes compartilham.
 
-- **Nenhum teste roda o Whisper de verdade:** o transcritor falso fica ligado para
-  todos. Esquecer isso num teste da interface rodaria o modelo sem ninguém perceber.
-- **Nenhum teste escreve nas pastas do usuário:** o cache de transcrições e os envios
-  vão para a pasta temporária do teste.
+- **Nenhum teste roda modelo de verdade nem chama a internet:** o transcritor falso, o
+  recorte falso, a IA falsa e o Pexels falso ficam ligados para todos. Esquecer isso num teste da
+  interface rodaria o Whisper (ou gastaria a chave do Gemini) sem ninguém perceber. Os
+  testes do recorte e da IA desligam o falso de propósito, com o modelo e a rede
+  trocados por imitações.
+- **Nenhum teste escreve nas pastas do usuário nem lê as chaves dele:** o cache de
+  transcrições, os envios, as imagens de fundo, o registro de gastos e a configuração
+  (onde ficam as chaves do Gemini e do Pexels) vão para a pasta temporária do teste, e
+  as chaves do ambiente são apagadas.
 - **Os vídeos de teste são feitos pelo próprio PyAV**, sem ffmpeg na linha de comando,
   para rodar igual no Windows, no macOS e no Linux.
 """
@@ -17,18 +22,32 @@ import av
 import numpy as np
 import pytest
 
-from editor import render, servidor, transcricao
+from editor import chaves, ia, imagens, pexels, recorte, render, servidor, transcricao
 
 
 @pytest.fixture(autouse=True)
 def _isolado(tmp_path, monkeypatch):
     monkeypatch.setenv(transcricao.VARIAVEL_FALSA, "falso")
+    monkeypatch.setenv(recorte.VARIAVEL_FALSA, "falso")
+    monkeypatch.setenv(ia.VARIAVEL_FALSA, "falsa")
+    monkeypatch.setenv(pexels.VARIAVEL_FALSA, "falso")
+    monkeypatch.delenv(ia.VARIAVEL_DA_CHAVE, raising=False)
+    monkeypatch.delenv(pexels.VARIAVEL_DA_CHAVE, raising=False)
+    monkeypatch.setattr(ia, "_geradas", 0)
     cache = tmp_path / "_cache"
     envios = tmp_path / "_envios"
+    config = tmp_path / "_config"
     cache.mkdir()
     envios.mkdir()
     monkeypatch.setattr(render, "pasta_de_cache", lambda: cache)
     monkeypatch.setattr(servidor, "pasta_de_envios", lambda: envios)
+    monkeypatch.setattr(chaves, "pasta_de_config", lambda: config)
+    for nome, modulo, funcao in (("_imagens", imagens, "pasta"),
+                                 ("_pexels", pexels, "_pasta_do_cache"),
+                                 ("_dados", ia, "pasta_de_dados")):
+        pasta = tmp_path / nome
+        pasta.mkdir()
+        monkeypatch.setattr(modulo, funcao, lambda pasta=pasta: pasta)
 
 
 def fazer_video(caminho: Path, *, largura: int = 320, altura: int = 568, segundos: float = 3.0,

@@ -2,14 +2,16 @@
  * A conversa com o servidor local. Toda chamada leva o token da sessão, que chega na
  * URL aberta pelo comando `editar` e fica guardado na aba (sessionStorage).
  */
-import type {Edicao, Estado, Saida, Tarefa, VideoInfo} from './tipos';
+import type {
+  Edicao, Estado, EstadoChave, EstadoIa, FotoPexels, Ideia, ImagemFundo, RecorteInfo, Saida, Tarefa, VideoInfo,
+} from './tipos';
 
 const CHAVE = 'editor-token';
 const daUrl = new URLSearchParams(location.search).get('t');
 if (daUrl) {
   sessionStorage.setItem(CHAVE, daUrl);
   // Tira o token da barra de endereço: ele não precisa ficar à vista.
-  history.replaceState(null, '', location.pathname);
+  history.replaceState(null, '', location.pathname + location.hash);
 }
 export const token = sessionStorage.getItem(CHAVE) ?? '';
 
@@ -100,4 +102,48 @@ export const api = {
       `/api/tarefas/${tarefaId}/thumbnail`, {method: 'POST', body: dados});
   },
   abrirPasta: () => pedir('/api/abrir-pasta', {method: 'POST'}),
+
+  // A chave do Gemini vai para o servidor local e nunca volta: o estado só diz o fim dela.
+  salvarChave: (chave: string) =>
+    pedir<EstadoIa>('/api/ia/chave', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({chave}),
+    }),
+  apagarChave: () => pedir<EstadoIa>('/api/ia/chave', {method: 'DELETE'}),
+  ideias: (tarefaId: string, evitar: string[]) =>
+    pedir<{variantes: Ideia[]; modelo: string; segundos: number}>(`/api/tarefas/${tarefaId}/thumbs-ia`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({evitar}),
+    }),
+  recorteInfo: (videoId: string, t: number) =>
+    pedir<RecorteInfo>(`/api/videos/${videoId}/recorte?segundo=${t.toFixed(2)}`),
+  recorteUrl: (videoId: string, t: number, largura = 1280) =>
+    comToken(`/api/videos/${videoId}/recorte.png?segundo=${t.toFixed(2)}&largura=${largura}`),
+
+  // ── o fundo da thumbnail ──
+  enviarImagem: (arquivo: File) => {
+    const dados = new FormData();
+    dados.append('arquivo', arquivo);
+    return pedir<ImagemFundo>('/api/imagens', {method: 'POST', body: dados});
+  },
+  imagemUrl: (imagem: ImagemFundo) => comToken(imagem.url),
+  salvarChavePexels: (chave: string) =>
+    pedir<EstadoChave>('/api/pexels/chave', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({chave}),
+    }),
+  apagarChavePexels: () => pedir<EstadoChave>('/api/pexels/chave', {method: 'DELETE'}),
+  buscarPexels: (consulta: string, orientacao: string) =>
+    pedir<{fotos: FotoPexels[]}>('/api/pexels/buscar', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({consulta, orientacao}),
+    }),
+  previaPexels: (id: number) => comToken(`/api/pexels/foto/${id}`),
+  usarPexels: (id: number) =>
+    pedir<ImagemFundo>('/api/pexels/usar', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id}),
+    }),
+  gerarFundo: (cena: string, proporcao: string, lado: string) =>
+    pedir<ImagemFundo & {restantes: number; nova: boolean}>('/api/fundo-gerado', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({cena, proporcao, lado}),
+    }),
+  maoUrl: (estilo: string, tom: string) => `/maos/mao-${estilo}-${tom}.${estilo === '3d' ? 'png' : 'svg'}`,
 };

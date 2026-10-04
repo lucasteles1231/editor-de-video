@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import io
 import json
+import logging
 import os
 import re
 import secrets
@@ -29,19 +31,30 @@ from pathlib import Path
 from typing import Annotated
 
 import numpy as np
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 
-from editor import __version__, icones, transcricao
+from editor import __version__, ia, icones, imagens, pexels, recorte, transcricao
 from editor import saida as saida_mod
 from editor import video as video_mod
 from editor.opcoes import OpcoesDeEdicao
 from editor.tarefas import Gerente, Ocupado, Tarefa
 
+logger = logging.getLogger(__name__)
+
 #: O YouTube recusa thumbnail maior que 2 MB.
 JPG_MAXIMO = 2 * 1024 * 1024
+#: As fontes que a página pode pedir (a da legenda e a da chamada da thumbnail).
+FONTES = ("DejaVuSans-Bold.ttf", "Anton-Regular.ttf")
+#: Quantos recortes ficam guardados: cada um é um quadro inteiro mais o alfa.
+RECORTES_GUARDADOS = 6
+#: As mãos que apontam (Fluent UI Emoji, MIT): só estes arquivos são servidos.
+MAOS = tuple(sorted(f"mao-{estilo}-{tom}.{'png' if estilo == '3d' else 'svg'}"
+                    for estilo in ("3d", "vetor")
+                    for tom in ("default", "light", "medium-light", "medium", "medium-dark",
+                                "dark")))
 #: Envios mais velhos que isto são apagados quando a interface abre.
 GUARDAR_ENVIOS_S = 2 * 24 * 3600
 
@@ -97,6 +110,46 @@ def nitidez(matriz: np.ndarray) -> float:
     return float(lap.var()) * (0.3 if brilho < 40 or brilho > 230 else 1.0)
 
 
+def quadros_candidatos(caminho: Path, info: video_mod.Info, n: int = ia.QUADROS,
+                       lado: int = ia.LADO_DO_QUADRO) -> list[tuple[float, bytes]]:
+    """Os ``n`` quadros para o Gemini olhar: os mais nítidos entre 24 amostras, espalhados
+    pelo vídeo, em JPEG pequeno. Em ordem de tempo."""
+    dur = max(0.1, info.duracao)
+    amostras = []
+    for k in range(24):
+        t = dur * (0.05 + 0.9 * k / 23)
+        m = video_mod.quadro_em(caminho, t, info.rotacao)
+        if m is None:
+            continue
+        img = Image.fromarray(m)
+        pequeno = np.asarray(img.resize((320, max(1, round(320 * img.height / img.width)))))
+        amostras.append((nitidez(pequeno.astype(np.float32)), t, img))
+    escolhidos: list[tuple[float, Image.Image]] = []
+    espaco = dur / 12
+    for _nota, t, img in sorted(amostras, key=lambda a: -a[0]):
+        if all(abs(t - u) >= espaco for u, _ in escolhidos):
+            escolhidos.append((t, img))
+        if len(escolhidos) == n:
+            break
+    saida = []
+    for t, img in sorted(escolhidos, key=lambda e: e[0]):
+        img = img.copy()
+        img.thumbnail((lado, lado), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.convert("RGB").save(buf, "JPEG", quality=82)
+        saida.append((round(t, 2), buf.getvalue()))
+    return saida
+
+
+def fala_do_plano(caminho: Path) -> str:
+    """O texto dito, na ordem, a partir do ``.plano.json`` da edição."""
+    try:
+        plano = json.loads(Path(caminho).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    return " ".join(str(b.get("texto", "")) for b in plano.get("blocos", [])).strip()
+
+
 def abrir_pasta(pasta: Path) -> None:
     """Abre a pasta no gerenciador de arquivos do sistema."""
     if sys.platform.startswith("win"):
@@ -113,8 +166,11 @@ def criar_app(token: str, *, porta: int, pasta_saida: Path | None = None,
     gerente = Gerente()
     envios = pasta_de_envios()
     _limpar_envios_antigos(envios)
+    imagens.limpar_antigas()
     saida_base = pasta_saida or pasta_de_saida_padrao()
     videos: dict[str, dict] = {}
+    recortes: dict[tuple[str, float], tuple[np.ndarray, recorte.Recorte]] = {}
+    trava_dos_recortes = threading.Lock()
     hosts = {f"127.0.0.1:{porta}", f"localhost:{porta}"}
     origens = {f"http://{h}" for h in hosts}
 
@@ -155,7 +211,125 @@ def criar_app(token: str, *, porta: int, pasta_saida: Path | None = None,
                         "saida": saida_mod.OpcoesDeSaida().para_dict()},
             "pasta_saida": str(saida_base), "ocupado": gerente.ocupado(),
             "gif_max_s": saida_mod.GIF_MAX_S,
+            "ia": ia.estado(),
+            "recorte": {"baixado": recorte.modelo_baixado(), "tamanho": recorte.TAMANHO},
+            "pexels": pexels.estado(),
+            "geracao": {"restantes": ia.geracoes_restantes(), "teto": ia.TETO_DE_IMAGENS},
         }
+
+    # ── a chave do Gemini ─────────────────────────────────────────────────
+    # A chave entra pela página e nunca volta para ela: o estado só diz o fim dela.
+
+    @app.get("/api/ia")
+    def estado_da_ia():
+        return ia.estado()
+
+    @app.put("/api/ia/chave")
+    def salvar_a_chave(dados: Annotated[dict, Body()]):
+        try:
+            valor = ia.validar_chave(str(dados.get("chave", "")))
+        except ia.ErroDaIA as erro:
+            raise HTTPException(422, str(erro)) from erro
+        ia.salvar_chave(valor)
+        return ia.estado()
+
+    @app.delete("/api/ia/chave")
+    def apagar_a_chave():
+        ia.apagar_chave()
+        return ia.estado()
+
+    # ── as imagens de fundo ───────────────────────────────────────────────
+
+    def _imagem(info: imagens.Imagem) -> dict:
+        return {**info.para_dict(), "url": f"/api/imagens/{info.id}"}
+
+    @app.post("/api/imagens")
+    def enviar_imagem(arquivo: Annotated[UploadFile, File()]):
+        dados = arquivo.file.read(imagens.TETO_BYTES + 1)
+        try:
+            return _imagem(imagens.guardar(dados, origem="envio"))
+        except imagens.ImagemRecusada as erro:
+            raise HTTPException(400, f"Não deu para usar essa imagem: {erro}.") from erro
+
+    @app.get("/api/imagens/{iid}")
+    def ver_imagem(iid: str):
+        caminho = imagens.caminho(iid)
+        if caminho is None:
+            raise HTTPException(404, "imagem não encontrada")
+        return FileResponse(caminho, media_type="image/jpeg",
+                            headers={"Cache-Control": "max-age=86400"})
+
+    # ── o Pexels ──────────────────────────────────────────────────────────
+
+    @app.get("/api/pexels")
+    def estado_do_pexels():
+        return pexels.estado()
+
+    @app.put("/api/pexels/chave")
+    def salvar_chave_do_pexels(dados: Annotated[dict, Body()]):
+        try:
+            valor = pexels.validar_chave(str(dados.get("chave", "")))
+        except pexels.ErroDoPexels as erro:
+            raise HTTPException(422, str(erro)) from erro
+        pexels.salvar_chave(valor)
+        return pexels.estado()
+
+    @app.delete("/api/pexels/chave")
+    def apagar_chave_do_pexels():
+        pexels.apagar_chave()
+        return pexels.estado()
+
+    @app.post("/api/pexels/buscar")
+    def buscar_no_pexels(dados: Annotated[dict, Body()]):
+        try:
+            fotos = pexels.buscar(str(dados.get("consulta", "")),
+                                  str(dados.get("orientacao", "paisagem")))
+        except pexels.ErroDoPexels as erro:
+            raise HTTPException(502, str(erro)) from erro
+        # Sem os endereços do Pexels: a página pede a prévia ao editor, que baixa.
+        return {"fotos": [{k: v for k, v in f.para_dict().items()
+                           if k not in ("previa", "grande")} for f in fotos]}
+
+    @app.get("/api/pexels/foto/{fid}")
+    def previa_do_pexels(fid: int):
+        try:
+            dados = pexels.baixar(fid, "previa")
+        except pexels.ErroDoPexels as erro:
+            raise HTTPException(404, str(erro)) from erro
+        return Response(dados, media_type="image/jpeg",
+                        headers={"Cache-Control": "max-age=86400"})
+
+    @app.post("/api/pexels/usar")
+    def usar_foto_do_pexels(dados: Annotated[dict, Body()]):
+        fid = int(dados.get("id", 0) or 0)
+        foto = pexels.foto(fid)
+        try:
+            bruto = pexels.baixar(fid, "grande")
+            info = imagens.guardar(bruto, origem="pexels",
+                                   credito=f"{foto.autor} / Pexels" if foto else "Pexels")
+        except (pexels.ErroDoPexels, imagens.ImagemRecusada) as erro:
+            raise HTTPException(502, str(erro)) from erro
+        return _imagem(info)
+
+    # ── o fundo gerado (custa dinheiro: só a pedido, com teto) ─────────────
+
+    @app.post("/api/fundo-gerado")
+    def gerar_um_fundo(dados: Annotated[dict, Body()]):
+        cena = " ".join(str(dados.get("cena", "")).split())
+        proporcao = str(dados.get("proporcao", "16:9"))
+        lado = str(dados.get("lado", "esquerda"))
+        chave_ = hashlib.sha1(f"{cena}|{proporcao}|{lado}".encode()).hexdigest()
+        ja_feita = imagens.achar(chave_)
+        if ja_feita:
+            return {**_imagem(ja_feita), "restantes": ia.geracoes_restantes(), "nova": False}
+        try:
+            bruto = ia.gerar_fundo(cena, proporcao, lado_do_texto=lado)
+            info = imagens.guardar(bruto, origem="gerada", credito=cena, chave=chave_)
+        except ia.ErroDaIA as erro:
+            raise HTTPException(502, str(erro)) from erro
+        except imagens.ImagemRecusada as erro:
+            raise HTTPException(502, f"A imagem gerada veio com problema: {erro}") from erro
+        return {**_imagem(info), "restantes": ia.geracoes_restantes(), "nova": True}
 
     @app.post("/api/videos")
     def enviar(arquivo: Annotated[UploadFile, File()]):
@@ -214,6 +388,45 @@ def criar_app(token: str, *, porta: int, pasta_saida: Path | None = None,
             if n > nota:
                 melhor, nota = t, n
         return {"t": round(melhor, 2)}
+
+    # ── o recorte da pessoa ───────────────────────────────────────────────
+
+    def _recorte(vid: str, segundo: float) -> tuple[np.ndarray, recorte.Recorte]:
+        v = _video(vid)
+        chave_ = (vid, round(segundo, 2))
+        with trava_dos_recortes:
+            if chave_ in recortes:
+                recortes[chave_] = recortes.pop(chave_)          # o mais recente no fim
+                return recortes[chave_]
+        matriz = video_mod.quadro_em(v["caminho"], segundo, v["info"].rotacao)
+        if matriz is None:
+            raise HTTPException(404, "sem quadro nesse instante")
+        try:
+            r = recorte.recortar(matriz)
+        except Exception as erro:
+            logger.warning("o recorte falhou: %s", erro)
+            raise HTTPException(503, "Não consegui recortar a pessoa. Na primeira vez o "
+                                f"editor baixa o modelo de recorte ({recorte.TAMANHO}): "
+                                "confira a internet.") from erro
+        r.alfa = (np.clip(r.alfa, 0, 1) * 255).astype(np.uint8)    # guardado em 1 byte
+        with trava_dos_recortes:
+            recortes[chave_] = (matriz, r)
+            while len(recortes) > RECORTES_GUARDADOS:
+                recortes.pop(next(iter(recortes)))
+        return matriz, r
+
+    @app.get("/api/videos/{vid}/recorte")
+    def recorte_info(vid: str, segundo: float = 0.0):
+        _matriz, r = _recorte(vid, segundo)
+        return {"ok": r.ok, "pessoa": r.pessoa.para_dict() if r.pessoa else None,
+                "rosto": r.rosto.para_dict() if r.rosto else None}
+
+    @app.get("/api/videos/{vid}/recorte.png")
+    def recorte_png(vid: str, segundo: float = 0.0, largura: int = 1280):
+        matriz, r = _recorte(vid, segundo)
+        dados = recorte.png(matriz, r.alfa.astype(np.float32) / 255.0, largura)
+        return Response(dados, media_type="image/png",
+                        headers={"Cache-Control": "max-age=3600"})
 
     @app.post("/api/tarefas")
     async def criar_tarefa(request: Request):
@@ -304,6 +517,24 @@ def criar_app(token: str, *, porta: int, pasta_saida: Path | None = None,
                 t.resultado["thumbnails"].append(c)
         return {"png": png.name, "jpg": jpg.name, "jpg_bytes": jpg.stat().st_size}
 
+    # ── as ideias do Gemini ───────────────────────────────────────────────
+
+    @app.post("/api/tarefas/{tid}/thumbs-ia")
+    def thumbs_ia(tid: str, dados: Annotated[dict | None, Body()] = None):
+        t = _tarefa(tid)
+        if t.estado != "pronto" or not t.resultado:
+            raise HTTPException(409, "a edição ainda não terminou")
+        evitar = [str(c)[:60] for c in (dados or {}).get("evitar", [])][:12]
+        info = video_mod.sondar(t.video)
+        quadros = quadros_candidatos(t.video, info)
+        try:
+            return ia.sugerir(fala_do_plano(Path(t.resultado["plano"])), quadros,
+                              idioma=t.edicao.idioma, duracao=info.duracao,
+                              vertical=info.vertical, nomes_de_icones=icones.nomes(),
+                              evitar=evitar)
+        except ia.ErroDaIA as erro:
+            raise HTTPException(502, str(erro)) from erro
+
     @app.post("/api/abrir-pasta")
     def abrir_a_pasta():
         saida_base.mkdir(parents=True, exist_ok=True)
@@ -314,9 +545,19 @@ def criar_app(token: str, *, porta: int, pasta_saida: Path | None = None,
     def lista_de_icones():
         return {nome: icones.caminhos(nome) for nome in icones.nomes()}
 
-    @app.get("/fontes/DejaVuSans-Bold.ttf")
-    def fonte():
-        dados = (files("editor") / "recursos" / "DejaVuSans-Bold.ttf").read_bytes()
+    @app.get("/maos/{nome}")
+    def mao(nome: str):
+        if nome not in MAOS:
+            raise HTTPException(404, "mão não encontrada")
+        dados = (files("editor") / "recursos" / "maos" / nome).read_bytes()
+        tipo = "image/png" if nome.endswith(".png") else "image/svg+xml"
+        return Response(dados, media_type=tipo, headers={"Cache-Control": "max-age=86400"})
+
+    @app.get("/fontes/{nome}")
+    def fonte(nome: str):
+        if nome not in FONTES:
+            raise HTTPException(404, "fonte não encontrada")
+        dados = (files("editor") / "recursos" / nome).read_bytes()
         return Response(dados, media_type="font/ttf",
                         headers={"Cache-Control": "max-age=86400"})
 
@@ -365,4 +606,5 @@ def abrir(*, porta: int = 0, navegador: bool = True) -> int:
     return 0
 
 
-__all__ = ["abrir", "abrir_pasta", "criar_app", "nitidez"]
+__all__ = ["abrir", "abrir_pasta", "criar_app", "fala_do_plano", "nitidez",
+           "quadros_candidatos"]

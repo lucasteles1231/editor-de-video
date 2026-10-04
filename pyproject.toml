@@ -1,7 +1,7 @@
 [project]
 name = "editor-de-video"
 version = "0.1.0"
-description = "Edita vídeos falados no estilo dos Shorts — legenda karaokê, cortes de silêncio, zoom, adesivos, ícones e thumbnail — tudo no seu computador."
+description = "Edita vídeos falados no estilo dos Shorts — legenda karaokê, cortes de silêncio, zoom, adesivos, ícones e thumbnail — no seu computador."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
@@ -26,6 +26,11 @@ dependencies = [
     "uvicorn>=0.30",
     "python-multipart>=0.0.9",
     "platformdirs>=4",
+    # Já vêm com o faster-whisper; declarados porque o editor usa direto: o recorte da
+    # pessoa (onnxruntime + o modelo do Hugging Face) e a conversa com o Gemini (httpx).
+    "onnxruntime>=1.17",
+    "huggingface-hub>=0.23",
+    "httpx>=0.27",
 ]
 
 [project.urls]
@@ -35,7 +40,7 @@ Repositorio = "https://github.com/lucasteles1231/editor-de-video"
 editar = "editor.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.6", "httpx>=0.27", "pytest-playwright>=0.5"]
+dev = ["pytest>=8", "ruff>=0.6", "pytest-playwright>=0.5"]
 
 [build-system]
 requires = ["hatchling>=1.26"]

@@ -10,7 +10,7 @@
 <p align="center">
   <a href="https://github.com/lucasteles1231/editor-de-video/actions/workflows/testes.yml"><img src="https://img.shields.io/github/actions/workflow/status/lucasteles1231/editor-de-video/testes.yml?branch=main&style=for-the-badge&label=testes&labelColor=1a1a1a" alt="testes"></a>
   <img src="https://img.shields.io/badge/Windows-macOS-00c2ff?style=for-the-badge&labelColor=1a1a1a" alt="Windows e macOS">
-  <img src="https://img.shields.io/badge/100%25-local-ffd400?style=for-the-badge&labelColor=1a1a1a" alt="100% local">
+  <img src="https://img.shields.io/badge/100%25%20local-por%20padr%C3%A3o-ffd400?style=for-the-badge&labelColor=1a1a1a" alt="100% local por padrão">
   <img src="https://img.shields.io/badge/python-3.12+-b36bff?style=for-the-badge&labelColor=1a1a1a" alt="Python 3.12 ou mais novo">
   <a href="LICENSE"><img src="https://img.shields.io/badge/licen%C3%A7a-MIT-9be15d?style=for-the-badge&labelColor=1a1a1a" alt="licença MIT"></a>
 </p>
@@ -19,6 +19,7 @@
   <a href="#começo-rápido"><b>Instalar</b></a> ·
   <a href="#o-que-ele-faz">O que ele faz</a> ·
   <a href="#a-interface">A interface</a> ·
+  <a href="#a-thumbnail">A thumbnail</a> ·
   <a href="#no-terminal">No terminal</a> ·
   <a href="#desempenho">Desempenho</a> ·
   <a href="#dúvidas-e-problemas">Dúvidas</a>
@@ -35,9 +36,10 @@ a edição que tomaria uma tarde, no estilo dos Shorts, Reels e TikTok:
 - põe zoom, ícones e efeitos sonoros;
 - e ainda gera a thumbnail.
 
-Ele roda **inteiro no seu computador**, sem conta, sem chave de API, sem assinatura e
-sem marca d'água. A transcrição é feita pelo Whisper na sua própria máquina, e o vídeo
-não vai para servidor nenhum.
+Por padrão, ele roda **inteiro no seu computador**, sem conta, sem chave de API, sem
+assinatura e sem marca d'água. A transcrição é feita pelo Whisper na sua própria máquina,
+e o vídeo não vai para servidor nenhum. Se você quiser, a thumbnail também ganha
+sugestões do Gemini, com uma chave grátis sua.
 
 <p align="center">
   <img src="docs/img/antes-depois.png" alt="O mesmo instante do vídeo, antes e depois: depois tem legenda, a palavra microfone num adesivo amarelo, um ícone de microfone e um zoom leve" width="760">
@@ -95,10 +97,12 @@ não vai para servidor nenhum.
   </tr>
   <tr>
     <td><img src="docs/img/funcoes/thumbnail.svg" width="44" alt=""></td>
-    <td><b>Thumbnail.</b> O título vem da sua primeira frase, a palavra em destaque vai num
-    adesivo, e o fundo é o quadro mais nítido do vídeo. Sai em três tamanhos: YouTube
-    (1280×720), Shorts, Reels e TikTok (1080×1920) e quadrado. Cada um vai em PNG e em JPG
-    de até 2 MB, que é o limite do YouTube.</td>
+    <td><b>Thumbnail.</b> A pessoa é recortada do fundo, no seu computador, e vai na frente
+    de outro quadro do vídeo, de uma imagem sua, de uma foto do Pexels ou de uma cor. Tem
+    luz, contorno e uma mão apontando para o título, e o Gemini pode sugerir 3 ideias de
+    acordo com o que você falou. Sai em três tamanhos: YouTube (1280×720), Shorts, Reels e
+    TikTok (1080×1920) e quadrado. Cada um vai em PNG e em JPG de até 2 MB, que é o limite
+    do YouTube.</td>
   </tr>
   <tr>
     <td><img src="docs/img/funcoes/local.svg" width="44" alt=""></td>
@@ -107,8 +111,10 @@ não vai para servidor nenhum.
   </tr>
 </table>
 
-Nada disso é IA generativa: cada decisão segue uma regra fixa, e o mesmo vídeo sai sempre
-igual. A única IA é o Whisper, que transcreve a fala.
+A edição do vídeo não usa IA generativa: cada decisão segue uma regra fixa, e o mesmo
+vídeo sai sempre igual. As IAs que rodam são o Whisper, que transcreve a fala, e o MODNet,
+que recorta a pessoa para a thumbnail, as duas no seu computador. O Gemini só entra se
+você colar uma chave e ligar as sugestões.
 
 ## A interface
 
@@ -149,6 +155,60 @@ Funciona no Chrome, no Edge, no Firefox e no Safari, no tema claro ou escuro, o 
 seu sistema.
 
 <br clear="right">
+
+## A thumbnail
+
+O passo 5 monta uma capa à parte, em camadas. Cada camada tem uma aba, e a prévia muda
+enquanto você mexe.
+
+<p align="center">
+  <img src="docs/img/thumb-ideias.png" alt="Três ideias de thumbnail sugeridas pelo Gemini para o vídeo de exemplo, cada uma com a pessoa recortada, uma chamada e uma luz diferente" width="100%">
+</p>
+
+- **Texto:** a chamada, de 2 a 5 palavras, a palavra que vai no adesivo e o modelo:
+  clássico, número, pergunta ou alerta.
+- **Fundo:** o que vai atrás da pessoa, de uma das cinco fontes da tabela abaixo, com
+  desfoque, escurecer, vinheta e um tom da cor de destaque.
+- **Pessoa:** o recorte, o tamanho, o espelho, o contorno branco, a luz (na borda, halo
+  ou raios) e um realce de contraste. Para mudar a pessoa de lugar, arraste na prévia.
+- **Mão:** um emoji de mão que gira sozinho até o dedo apontar para o título. Ela vem em
+  3D ou em vetor, nos seis tons de pele, e também se arrasta.
+- **Detalhes:** a cor de destaque, o ícone, o selo e os tamanhos que vão sair.
+
+<p align="center">
+  <img src="docs/img/thumb-abas.png" alt="A prévia da thumbnail ao lado da aba Fundo, com as cinco fontes de fundo e os controles de desfoque" width="760">
+</p>
+
+| Fonte do fundo | O que precisa | O que sai do computador |
+|---|---|---|
+| **Vídeo** | nada | nada. Pode ser outro quadro, que mostra o assunto |
+| **Imagem** | um JPG, PNG ou WebP seu, de até 20 MB | nada |
+| **Pexels** | uma [chave grátis do Pexels](https://www.pexels.com/api/) | o texto da busca. As fotos vêm com o crédito do fotógrafo |
+| **Gerada pelo Gemini** | uma chave do Gemini com faturamento ativo, uns US$ 0,04 por imagem | a descrição da cena, só quando você clica, e no máximo 10 imagens por sessão |
+| **Cor** | nada | nada |
+
+O recorte da pessoa usa o [MODNet](https://github.com/ZHKKKe/MODNet) no seu computador.
+Na primeira thumbnail com recorte, o editor baixa o modelo, que tem 26 MB.
+
+### Ideias do Gemini (opcional)
+
+Com uma chave do Gemini, a IA lê o que você falou, olha 8 quadros do vídeo e sugere 3
+thumbnails. Cada ideia escolhe a chamada, o modelo, o quadro, o fundo, a luz, a mão e o
+ícone, e tudo continua editável.
+
+1. Pegue uma chave grátis no [Google AI Studio](https://aistudio.google.com/apikey).
+2. Cole no passo 5. Ela fica só no seu computador, num arquivo que só o seu usuário lê,
+   e nunca volta para a página. A variável `GEMINI_API_KEY` também funciona.
+3. Ligue **Sugerir thumbnails com IA**. As ideias aparecem quando a edição termina.
+
+> [!IMPORTANT]
+> Vão para o Google o texto da fala e 8 quadros pequenos, de 512 px. O vídeo não sai do
+> computador. Na cota gratuita, o Google pode usar esse conteúdo para melhorar os
+> produtos dele.
+
+A cota gratuita é pequena. Em outubro de 2026, o modelo principal aceitava 20 pedidos
+por dia, e cada sugestão gasta um ou dois. Quando a cota de um modelo acaba, o editor
+passa para o próximo, e o aviso diz quando ela volta.
 
 ## Começo rápido
 
@@ -214,6 +274,8 @@ O navegador abre sozinho no editor. Para fechar, volte ao terminal e aperte `Ctr
 | O Python 3.12, se você ainda não tiver | ~75 MB | dentro da pasta do uv |
 | O editor e o que ele usa | ~220 MB | um ambiente só dele, criado pelo uv |
 | O modelo do Whisper (`small`) | 464 MB | Windows: `%USERPROFILE%\.cache\huggingface` · macOS: `~/.cache/huggingface` |
+| O modelo do recorte (MODNet), na primeira thumbnail com recorte | 26 MB | a mesma pasta do Hugging Face |
+| As chaves do Gemini e do Pexels, se você colar | — | `config.json`, em `%LOCALAPPDATA%\editor-de-video` (Windows) ou `~/Library/Application Support/editor-de-video` (macOS) |
 | Os vídeos editados e as thumbnails | — | `editor-de-video`, dentro da pasta **Vídeos** (Windows) ou **Filmes** (macOS) |
 
 O vídeo que você envia pela página é copiado para a pasta de cache do sistema
@@ -339,6 +401,8 @@ flowchart TD
     C --> P[plano: legenda, adesivos, zoom, ícones e sons]
     P --> D[desenho quadro a quadro]
     P --> T[thumbnail, desenhada no navegador]
+    R[recorte da pessoa, com o MODNet] --> T
+    G[ideias do Gemini, se você ligar] -.-> T
     D --> S([vídeo editado + .srt + .vtt])
     T --> I([PNG e JPG])
 ```
@@ -357,7 +421,8 @@ flowchart TD
    uma transição de 8 ms em cada corte, para não estalar.
 6. A **thumbnail** é desenhada na página. A prévia ao vivo usa o
    [Remotion Player](https://www.remotion.dev/player), e o PNG final sai do mesmo desenho,
-   no próprio navegador.
+   no próprio navegador. A pessoa é recortada pelo MODNet, com o ONNX Runtime, e as ideias
+   opcionais vêm da API do Gemini.
 
 ## Desempenho
 
@@ -409,11 +474,31 @@ Se quiser ficar com um só, desinstale o antigo pelo mesmo caminho por onde ele 
 </details>
 
 <details>
-<summary><b>Windows: erro de DLL ao transcrever</b></summary>
+<summary><b>Windows: erro de DLL ao transcrever ou ao recortar a pessoa</b></summary>
 
-O modelo de transcrição precisa do "Microsoft Visual C++ Redistributable", que a maioria
-dos computadores já tem. Se aparecer um erro com `DLL load failed`, instale a versão
-x64 [direto da Microsoft](https://aka.ms/vs/17/release/vc_redist.x64.exe) e tente de novo.
+O modelo de transcrição e o do recorte precisam do "Microsoft Visual C++
+Redistributable", que a maioria dos computadores já tem. Se aparecer um erro com
+`DLL load failed`, instale a versão x64
+[direto da Microsoft](https://aka.ms/vs/17/release/vc_redist.x64.exe) e tente de novo.
+
+</details>
+
+<details>
+<summary><b>A thumbnail com IA avisou que a cota acabou</b></summary>
+
+A cota gratuita do Gemini conta pedidos por modelo e por dia. O editor tenta três
+modelos antes de desistir, e o aviso diz quando a cota volta. Se você usa muito, ative o
+faturamento no [Google AI Studio](https://aistudio.google.com/): a cota sobe, e o Google
+cobra pelo uso, conforme a [tabela de preços](https://ai.google.dev/gemini-api/docs/pricing).
+
+</details>
+
+<details>
+<summary><b>Onde a chave fica guardada, e como apagar</b></summary>
+
+No `config.json` da pasta de configuração do editor (veja "O que é instalado, e onde"),
+que só o seu usuário consegue ler. A página só mostra os quatro últimos caracteres. Para
+apagar, use o botão **Remover chave** no passo 5, ou apague o arquivo.
 
 </details>
 
@@ -462,8 +547,9 @@ vezes, ele já está no computador.
 <details>
 <summary><b>Dá para usar sem internet?</b></summary>
 
-Sim, depois que o modelo foi baixado uma vez. A página não carrega nada de fora do seu
-computador.
+Sim, depois que os modelos foram baixados uma vez. Só as partes opcionais da thumbnail
+precisam de internet: as ideias do Gemini, as fotos do Pexels e o fundo gerado. Mesmo
+nelas, a página só fala com o seu computador, e é o editor que busca o resto.
 
 </details>
 

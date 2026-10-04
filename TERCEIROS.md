@@ -9,10 +9,13 @@ na instalação. A lista completa está aqui, com a licença de cada um.
 | O quê | Onde | Licença |
 |---|---|---|
 | Fonte **DejaVu Sans Bold** | `editor/recursos/DejaVuSans-Bold.ttf` | Bitstream Vera e domínio público: [`licencas/DejaVu-Fonts.txt`](licencas/DejaVu-Fonts.txt) |
+| Fonte **Anton**, a da chamada da thumbnail | `editor/recursos/Anton-Regular.ttf` | SIL Open Font License 1.1: [`licencas/Anton-OFL.txt`](licencas/Anton-OFL.txt) |
 | 122 ícones do **Tabler Icons** 3.48.0 (e os da tabela do README) | `editor/recursos/icones.json` e `docs/img/funcoes/` | MIT: [`licencas/Tabler-Icons-MIT.txt`](licencas/Tabler-Icons-MIT.txt) |
 | **React**, React DOM e scheduler | dentro da página montada (`editor/interface/estatico/`) | MIT: [`licencas/React-MIT.txt`](licencas/React-MIT.txt) |
 | **driver.js** 1.9, o tour | dentro da página montada | MIT: [`licencas/driver.js-MIT.txt`](licencas/driver.js-MIT.txt) |
+| **roughjs** 4.6, a seta e o círculo de caneta da thumbnail | dentro da página montada | MIT: [`licencas/roughjs-MIT.txt`](licencas/roughjs-MIT.txt) |
 | **Remotion** 4 e `@remotion/player`, a prévia da thumbnail | dentro da página montada | Remotion License: [`licencas/Remotion-License.md`](licencas/Remotion-License.md) |
+| A mão apontando do **Fluent UI Emoji**, da Microsoft (*backhand index pointing right*, em 3D e em vetor, nos seis tons) | `editor/recursos/maos/` | MIT: [`licencas/FluentUI-Emoji-MIT.txt`](licencas/FluentUI-Emoji-MIT.txt) |
 
 ### Sobre a licença do Remotion
 
@@ -37,11 +40,14 @@ Remotion, e a página não faz nenhuma chamada para fora do seu computador.
 |---|---|---|
 | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) e CTranslate2 | transcrever a fala | MIT |
 | Modelos [Whisper](https://github.com/openai/whisper), convertidos pela [Systran](https://huggingface.co/Systran) | o modelo baixado no primeiro uso | MIT |
+| [MODNet](https://github.com/ZHKKKe/MODNet), em ONNX ([`Xenova/modnet`](https://huggingface.co/Xenova/modnet)) | o recorte da pessoa na thumbnail, baixado no primeiro uso (26 MB) | Apache-2.0, código **e** pesos: [`licencas/MODNet-Apache-2.0.txt`](licencas/MODNet-Apache-2.0.txt) |
+| ONNX Runtime | roda o MODNet | MIT |
 | [PyAV](https://github.com/PyAV-Org/PyAV) | ler e gravar vídeo | BSD-3-Clause (veja abaixo) |
 | NumPy | as contas do áudio e dos quadros | BSD-3-Clause, entre outras |
 | Pillow | desenhar legenda, adesivos e ícones | MIT-CMU |
 | [rough](https://pypi.org/project/rough/) | o traço tremido dos ícones | MIT |
 | FastAPI, Starlette e Uvicorn | o servidor local da interface | MIT e BSD-3-Clause |
+| httpx | a conversa com o Gemini, quando a IA está ligada | BSD-3-Clause |
 | python-multipart | receber o vídeo enviado pela página | Apache-2.0 |
 | platformdirs | achar as pastas de cada sistema | MIT |
 
@@ -49,6 +55,33 @@ Remotion, e a página não faz nenhuma chamada para fora do seu computador.
 x265, que são GPL. É isso que deixa o editor gravar H.264 e H.265 sem instalar nada no
 sistema. Essas bibliotecas são baixadas do PyPI na instalação, e este repositório não
 as redistribui.
+
+## Serviços opcionais
+
+Nenhum deles é chamado sem uma chave de quem usa o editor. As chaves ficam no
+`config.json` da pasta de configuração, com leitura só para o próprio usuário, e nunca
+voltam para a página.
+
+### O Gemini
+
+A thumbnail com IA usa a [API do Gemini](https://ai.google.dev/), do Google, sob os
+[termos da API](https://ai.google.dev/gemini-api/terms).
+
+- **As ideias:** só são pedidas com a opção ligada. O Gemini recebe o texto da fala e 8
+  quadros pequenos do vídeo. Na cota gratuita, o Google pode usar o que recebe para
+  melhorar os produtos dele.
+- **O fundo gerado** (`gemini-2.5-flash-image`): só sai com um clique, e precisa de
+  faturamento ativo no Google, uns US$ 0,04 por imagem. O Gemini recebe só a descrição
+  da cena. O editor gera no máximo 10 imagens por sessão e anota cada uma num
+  `gastos.jsonl`, na pasta de dados dele.
+
+### O Pexels
+
+As fotos de banco vêm da [API do Pexels](https://www.pexels.com/api/), com uma chave
+grátis, sob as [regras da API](https://www.pexels.com/api/documentation/#guidelines) e a
+[licença do Pexels](https://www.pexels.com/license/), que permite uso livre. O Pexels
+recebe só o texto da busca. O próprio editor baixa as fotos, e a página mostra o link do
+Pexels e o nome de cada fotógrafo, como as regras pedem.
 
 ## As imagens do README
 

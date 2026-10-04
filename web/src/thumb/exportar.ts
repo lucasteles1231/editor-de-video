@@ -1,6 +1,7 @@
 /**
- * A thumbnail vira PNG no próprio navegador: o SVG da composição, com a fonte e a
- * imagem embutidas, é desenhado num canvas. Nada sai do computador.
+ * A thumbnail vira PNG no próprio navegador: o SVG da composição, com as fontes e as
+ * imagens embutidas (o quadro, o recorte, o fundo e a mão), é desenhado num canvas. Nada
+ * sai do computador.
  */
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
@@ -16,16 +17,13 @@ function comoDataUrl(blob: Blob): Promise<string> {
   });
 }
 
-let fonte: Promise<string> | null = null;
+const fontes: Record<string, Promise<string>> = {};
 
 /** A fonte como data URL: dentro de uma imagem SVG nada externo é carregado. */
-export function fonteEmbutida(): Promise<string> {
-  if (!fonte) {
-    fonte = fetch('/fontes/DejaVuSans-Bold.ttf')
-      .then((r) => r.blob())
-      .then(comoDataUrl);
-  }
-  return fonte;
+export function fonteEmbutida(url: string): Promise<string> {
+  if (!url || url.startsWith('data:')) return Promise.resolve(url);
+  fontes[url] ??= fetch(url).then((r) => r.blob()).then(comoDataUrl);
+  return fontes[url];
 }
 
 export async function imagemEmbutida(url: string): Promise<string> {
@@ -35,8 +33,13 @@ export async function imagemEmbutida(url: string): Promise<string> {
 }
 
 export async function gerarPng(props: ThumbProps): Promise<Blob> {
-  const [fonteData, fundoData] = await Promise.all([fonteEmbutida(), imagemEmbutida(props.fundo)]);
-  const svg = renderToStaticMarkup(createElement(Thumb, {...props, fonte: fonteData, fundo: fundoData}));
+  const [fonteTitulo, fonteTexto, quadro, recorte, fundoImagem, mao] = await Promise.all([
+    fonteEmbutida(props.fonteTitulo), fonteEmbutida(props.fonteTexto),
+    imagemEmbutida(props.quadro), imagemEmbutida(props.recorte), imagemEmbutida(props.fundoImagem),
+    imagemEmbutida(props.mao)]);
+  const svg = renderToStaticMarkup(createElement(Thumb, {
+    ...props, fonteTitulo, fonteTexto, quadro, recorte, fundoImagem, mao,
+  }));
   const url = URL.createObjectURL(new Blob([svg], {type: 'image/svg+xml;charset=utf-8'}));
   try {
     const img = new Image();

@@ -78,19 +78,81 @@ def test_tour_edicao_e_thumbnail(navegador, endereco, tmp_path):
     pagina.locator(".driver-popover-next-btn").click()      # "Começar a editar"
     pagina.locator(".driver-popover").wait_for(state="detached")
 
-    # envia, edita e espera a thumbnail desenhada no navegador
+    # Envia, edita e espera a thumbnail desenhada no navegador. A IA e o recorte são os
+    # falsos (conftest): três ideias fixas e uma silhueta de busto, sem rede nem modelo.
     video = fazer_video(tmp_path / "meu video.mp4", segundos=4.0)
     pagina.set_input_files("#passo-envio input[type=file]", str(video))
     pagina.locator(".ficha").wait_for(timeout=20_000)
     pagina.get_by_role("button", name="Editar vídeo").click()
     pagina.locator(".miniaturas img").first.wait_for(timeout=120_000)
 
+    # as três ideias viram cartões, e a primeira já é a thumbnail
+    ideias = pagina.locator(".ideia")
+    expect(ideias).to_have_count(3)
+    expect(ideias.nth(0)).to_have_attribute("aria-pressed", "true")
+    chamada = pagina.get_by_label("chamada", exact=False).first
+    expect(chamada).to_have_value("Corta as pausas sozinho")
+
     saida = tmp_path / "saida"
     pngs = list(saida.glob("*-thumb-1280x720.png"))
     assert len(pngs) == 1 and list(saida.glob("*-editado.mp4"))
     with Image.open(pngs[0]) as im:
         assert im.size == (1280, 720)
-        # não é um retângulo vazio: o título tem branco e o adesivo tem amarelo
+        # não é um retângulo vazio: tem o recorte, o contorno branco e a cor de destaque
         cores = im.convert("RGB").getcolors(1_000_000)
         assert len(cores) > 500
+        assert any(r > 250 and g > 250 and b > 250 for _, (r, g, b) in cores)
+    primeira = pngs[0].read_bytes()
+
+    # escolher outra ideia e gerar de novo troca a thumbnail
+    ideias.nth(2).click()
+    expect(ideias.nth(2)).to_have_attribute("aria-pressed", "true")
+    pagina.get_by_role("button", name="Gerar as thumbnails de novo").click()
+    pagina.wait_for_function("document.querySelector('.miniaturas img') !== null")
+    pagina.wait_for_timeout(300)
+    expect(pagina.get_by_role("button", name="Gerar as thumbnails de novo")).to_be_enabled(
+        timeout=60_000)
+    assert pngs[0].read_bytes() != primeira
+
+    # A primeira ideia (falsa) traz a mão apontando: ela está na prévia.
+    ideias.nth(0).click()
+    previa = pagina.locator(".previa-thumb")
+    expect(previa.locator('svg image[href*="/maos/"]').first).to_be_attached()
+
+    # Arrastar a pessoa na prévia muda a posição dela (e "voltar ao automático" acende).
+    # A prévia tem de estar na tela: fora dela, o Firefox não entrega o arrasto (e o
+    # Chromium entrega, o que escondia o erro do teste).
+    previa.scroll_into_view_if_needed()
+    caixa = previa.bounding_box()
+    x0, y0 = caixa["x"] + caixa["width"] * 0.8, caixa["y"] + caixa["height"] * 0.75
+    pagina.mouse.move(x0, y0)
+    pagina.mouse.down()
+    pagina.mouse.move(x0 - caixa["width"] * 0.2, y0, steps=6)
+    pagina.mouse.up()
+    pagina.get_by_role("tab", name="Pessoa").click()
+    expect(pagina.get_by_role("button", name="Voltar ao automático")).to_be_enabled()
+
+    # As fontes do fundo: a foto do Pexels (falso), a gerada (falsa) e a enviada.
+    pagina.get_by_role("tab", name="Fundo").click()
+    imagem_no_fundo = previa.locator('svg image[href*="/api/imagens/"]').first
+    pagina.get_by_role("button", name="Pexels", exact=True).click()
+    pagina.get_by_label("buscar no Pexels").fill("estúdio")
+    pagina.get_by_role("button", name="Buscar", exact=True).click()
+    pagina.locator(".fotos-pexels button").first.click()
+    expect(imagem_no_fundo).to_be_attached()
+
+    pagina.get_by_role("button", name="Gerar com IA").click()
+    pagina.get_by_label("descrição do fundo").fill("um estúdio com luz neon")
+    pagina.get_by_role("button", name="Gerar fundo (~US$ 0,04)").click()
+    expect(pagina.locator(".credito")).to_contain_text("um estúdio com luz neon")
+
+    fundo = tmp_path / "fundo.png"
+    Image.new("RGB", (800, 450), (0, 90, 200)).save(fundo)
+    pagina.get_by_role("button", name="Imagem", exact=True).click()
+    pagina.set_input_files(".soltar-imagem input[type=file]", str(fundo))
+    expect(pagina.locator(".soltar-imagem strong")).to_have_text("Arraste uma imagem aqui")
+    expect(imagem_no_fundo).to_be_attached()
+
+    pagina.get_by_role("button", name="Cor", exact=True).click()
+    expect(imagem_no_fundo).not_to_be_attached()
     assert erros == [], erros

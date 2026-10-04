@@ -1,13 +1,15 @@
-name: whisper de verdade
+name: modelos de verdade
 
-# Manual: baixa o modelo tiny e edita um vídeo com fala sintetizada pela voz do
-# próprio sistema. É o que os testes comuns não cobrem (eles usam uma transcrição
-# falsa): o modelo carregando e transcrevendo de verdade no Windows e no Mac.
+# Manual: os dois modelos que rodam no computador de quem usa, de verdade, no Windows e
+# no Mac. É o que os testes comuns não cobrem (eles usam uma transcrição e um recorte
+# falsos):
+# - o Whisper (modelo tiny) edita um vídeo com fala sintetizada pela voz do sistema;
+# - o MODNet (o recorte da pessoa) carrega no onnxruntime e roda num quadro.
 on: workflow_dispatch
 
 jobs:
-  whisper:
-    name: whisper (${{ matrix.os }})
+  modelos:
+    name: modelos (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -37,3 +39,5 @@ jobs:
           afconvert -f WAVE -d LEI16@44100 fala.aiff fala.wav
 
       - run: uv run python tests/whisper_de_verdade.py fala.wav
+
+      - run: uv run python tests/recorte_de_verdade.py

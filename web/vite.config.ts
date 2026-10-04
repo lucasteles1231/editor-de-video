@@ -23,6 +23,7 @@ export default defineConfig({
     proxy: {
       '/api': repassar,
       '/fontes': repassar,
+      '/maos': repassar,
     },
   },
 });
