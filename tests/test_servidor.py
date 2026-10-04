@@ -412,3 +412,42 @@ class TestAMontagem:
         r = cliente.post("/api/tarefas", headers=CABECA,
                          json={"montagem": {"fundo_id": fundo["id"]}, "edicao": {}, "saida": {}})
         assert r.status_code == 422
+
+
+class TestPresetsESons:
+    def test_o_estado_traz_os_presets_e_os_temas(self, cliente):
+        e = cliente.get("/api/estado", headers=CABECA).json()
+        assert [p["nome"] for p in e["presets"]][:2] == ["padrao", "gameplay"]
+        assert e["temas_dos_sons"]["gameplay"] == "Gameplay"
+        assert e["padroes"]["edicao"]["tema_dos_sons"] == "padrao"
+
+    def test_ouvir_um_tema(self, cliente):
+        r = cliente.get(f"/api/sons/gameplay.wav?volume=0.8&t={TOKEN}")
+        assert r.status_code == 200 and r.headers["content-type"] == "audio/wav"
+        assert r.content[:4] == b"RIFF" and len(r.content) > 48_000 * 2 * 3
+
+    def test_so_os_temas_do_catalogo(self, cliente):
+        assert cliente.get("/api/sons/nao-existe.wav", headers=CABECA).status_code == 404
+        assert cliente.get("/api/sons/..%2Fsons.wav", headers=CABECA).status_code == 404
+        assert cliente.get("/api/sons/gameplay.wav").status_code == 401
+
+    def test_opcao_nova_invalida_volta_com_o_motivo(self, cliente, tmp_path):
+        v = _enviar(cliente, fazer_video(tmp_path / "x.mp4"))
+        r = cliente.post("/api/tarefas", headers=CABECA, json={
+            "video_id": v["id"], "edicao": {"tema_dos_sons": "rock", "ritmo": 5}})
+        assert r.status_code == 422
+        assert "ritmo" in r.json()["detail"] and "rock" in r.json()["detail"]
+
+    def test_edita_com_um_preset(self, cliente, tmp_path):
+        from editor import presets
+
+        v = _enviar(cliente, fazer_video(tmp_path / "x.mp4", segundos=4.0))
+        p = presets.PRESETS["humor"]
+        r = cliente.post("/api/tarefas", headers=CABECA, json={
+            "video_id": v["id"], "edicao": p.edicao, "saida": {"formato": "mp4", **p.saida}})
+        assert r.status_code == 200, r.text
+        t = _esperar(cliente, r.json()["id"])
+        assert t["estado"] == "pronto", t
+        plano = cliente.get(f"/api/tarefas/{t['id']}/arquivo/plano?inline=1", headers=CABECA).json()
+        assert plano["forca_do_empurrao"] == p.edicao["empurrao"]
+        assert all(len(b["texto"]) <= 14 for b in plano["blocos"])

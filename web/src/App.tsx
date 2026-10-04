@@ -1,6 +1,7 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {api} from './api';
 import {falaEfetiva} from './fala';
+import {aplicarPreset, presetMarcado} from './presets';
 import {Painel} from './componentes/Painel';
 import {type Envio, PassoEdicoes, PassoEnvio, PassoLegenda, PassoSaida} from './componentes/Passos';
 import {ThumbPasso, chaveDoRecorte, propsDaThumb, type Recortes} from './componentes/ThumbPasso';
@@ -8,8 +9,8 @@ import {PROPORCAO} from './componentes/thumb/AbaFundo';
 import {gerarPng} from './thumb/exportar';
 import {carregarFonte} from './thumb/medida';
 import type {
-  AudioInfo, Camadas, Edicao, Estado, EstadoChave, EstadoIa, Ideia, Modo, MontagemConfig, PersonagemInfo, RecorteInfo,
-  Saida, Tarefa, ThumbConfig, VideoInfo,
+  AudioInfo, Camadas, Edicao, Estado, EstadoChave, EstadoIa, Ideia, Modo, MontagemConfig, PersonagemInfo, Preset,
+  RecorteInfo, Saida, Tarefa, ThumbConfig, VideoInfo,
 } from './tipos';
 import {comecarTour, tourJaVisto} from './tour';
 
@@ -349,6 +350,17 @@ export const App: React.FC = () => {
   }, [video, edicao, saida, previa, quandoTerminar, podeEditar, naMontagem, fundo, comPersonagem, personagem,
     pessoa, audio, montagem, camadas, fala]);
 
+  const marcado = useMemo(() => (estado && edicao && saida ? presetMarcado(estado.presets, edicao, saida) : null),
+    [estado, edicao, saida]);
+  const escolherPreset = (p: Preset) => {
+    if (!edicao || !saida) return;
+    const tela = aplicarPreset(p, {edicao, saida, montagem, thumb});
+    setEdicao(tela.edicao);
+    setSaida(tela.saida);
+    setMontagem(tela.montagem);
+    setThumb(tela.thumb);
+  };
+
   const regerar = () => {
     if (tarefa?.estado === 'pronto' && video) void gerarThumbs(tarefa.id, video, thumb, camadas);
   };
@@ -437,7 +449,8 @@ export const App: React.FC = () => {
           {estado && edicao && saida ? (
             <>
               <PassoEdicoes edicao={edicao} mudar={(p) => setEdicao({...edicao, ...p})}
-                porCima={naMontagem ? montagem.porCima : null} />
+                porCima={naMontagem ? montagem.porCima : null} presets={estado.presets} marcado={marcado}
+                aoEscolherPreset={escolherPreset} temas={estado.temas_dos_sons} />
               <PassoLegenda estado={estado} edicao={edicao} saida={saida}
                 mudar={(p) => setEdicao({...edicao, ...p})} mudarSaida={(p) => setSaida({...saida, ...p})} />
               <PassoSaida estado={estado} saida={saida} video={naMontagem ? fundo : unico}

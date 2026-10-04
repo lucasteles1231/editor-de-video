@@ -8,6 +8,7 @@ Cada motor que não estiver instalado é pulado:
 """
 from __future__ import annotations
 
+import re
 import threading
 import time
 
@@ -209,4 +210,52 @@ def test_montagem_com_personagem_e_narracao(navegador, endereco, tmp_path):
     editado = next(saida.glob("tela-editado.mp4"))
     assert (ler_info(editado)["largura"], ler_info(editado)["altura"]) == (180, 320)
     assert list(saida.glob("*-thumb-1280x720.png"))
+    assert not erros, erros
+
+
+def test_presets_e_sons(navegador, endereco, tmp_path):
+    """Escolher um preset muda os controles e o pedido; mexer num controle marca
+    "Personalizado"; o "Ouvir" toca os sons do tema."""
+    pagina = navegador.new_page(viewport={"width": 1366, "height": 900})
+    pagina.add_init_script("localStorage.setItem('editor-tour-visto', '1')")
+    erros: list[str] = []
+    pagina.on("pageerror", lambda e: erros.append(str(e)))
+    pagina.on("console", lambda m: m.type == "error" and erros.append(m.text))
+    pagina.goto(endereco)
+
+    presets = pagina.get_by_role("group", name="presets de edição")
+    marcado = presets.locator('[aria-pressed="true"]')
+    expect(marcado).to_have_text(re.compile("^Padrão"))
+    presets.get_by_role("button", name=re.compile("^Short de gameplay")).click()
+    expect(marcado).to_have_text(re.compile("^Short de gameplay"))
+    tema = pagina.get_by_label("Tema dos sons")
+    expect(tema).to_have_value("gameplay")
+    expect(pagina.get_by_label("Letras por linha")).to_have_value("14")
+    expect(pagina.get_by_label("Quadros por segundo")).to_have_value("60")
+    expect(pagina.locator("label.interruptor", has_text="Som em cada corte")
+           .locator("input")).to_be_checked()
+
+    # mexer num controle: vira "Personalizado"; escolher de novo volta a marca
+    pagina.get_by_label("Letras por linha").select_option("16")
+    expect(marcado).to_have_count(0)
+    expect(pagina.locator(".preset.personalizado")).to_have_attribute("aria-current", "true")
+    presets.get_by_role("button", name=re.compile("^Short de gameplay")).click()
+    expect(marcado).to_have_text(re.compile("^Short de gameplay"))
+
+    with pagina.expect_response(lambda r: "/api/sons/gameplay.wav" in r.url) as resposta:
+        pagina.get_by_role("button", name="Ouvir").click()
+    assert resposta.value.status == 200
+
+    video = fazer_video(tmp_path / "jogo.mp4", segundos=3.0)
+    pagina.set_input_files("#passo-envio input[type=file]", str(video))
+    pagina.locator(".ficha").wait_for(timeout=20_000)
+    with pagina.expect_request(lambda r: r.url.split("?")[0].endswith("/api/tarefas")
+                               and r.method == "POST") as pedido:
+        pagina.get_by_role("button", name="Editar vídeo").click()
+    corpo = pedido.value.post_data_json
+    assert corpo["edicao"]["tema_dos_sons"] == "gameplay" and corpo["edicao"]["ritmo"] == 1.5
+    assert corpo["edicao"]["som_nos_cortes"] is True and corpo["saida"]["fps"] == "60"
+    pagina.locator(".miniaturas img").first.wait_for(timeout=120_000)
+    # o preset de gameplay faz a thumbnail em pé
+    assert list((tmp_path / "saida").glob("*-thumb-1080x1920.png"))
     assert not erros, erros

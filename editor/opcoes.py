@@ -26,6 +26,22 @@ class OpcoesDeEdicao:
     modelo: str = MODELO_PADRAO
     #: Na montagem em camadas, a pessoa (ou o personagem) muda de lugar em alguns cortes.
     mover: bool = True
+    #: De 0,5 a 2: mais alto, mais adesivos, ícones, zooms e sons, mais próximos.
+    ritmo: float = 1.0
+    #: O zoom que o adesivo dá (0,06 = 6%).
+    empurrao: float = 0.06
+    #: O silêncio que fica no lugar de uma pausa cortada, em segundos.
+    respiro: float = 0.15
+    #: O tema dos efeitos (ver ``recursos/sons.json``).
+    tema_dos_sons: str = "padrao"
+    #: Um som curto e baixo em cada corte.
+    som_nos_cortes: bool = False
+    #: "dinheiro" chama moedas, "errado" uma buzina...
+    sons_por_palavra: bool = True
+    #: O volume dos efeitos (1,0 = o de sempre).
+    volume_dos_sons: float = 1.0
+    #: A largura da legenda; vazio, 18 em pé e 32 deitado.
+    caracteres_por_linha: int | None = None
 
     def problemas(self) -> list[str]:
         erros = []
@@ -39,6 +55,21 @@ class OpcoesDeEdicao:
             erros.append("o tamanho da legenda vai de 0,5 a 2")
         if self.modelo not in MODELOS:
             erros.append(f"modelo desconhecido: {self.modelo} (use {', '.join(MODELOS)})")
+        if not 0.5 <= self.ritmo <= 2.0:
+            erros.append("o ritmo vai de 0,5 a 2")
+        if not 0.0 <= self.empurrao <= 0.15:
+            erros.append("o empurrão do adesivo vai de 0 a 0,15")
+        if not 0.05 <= self.respiro <= 0.4:
+            erros.append("o respiro vai de 0,05 a 0,4 segundo")
+        if not 0.3 <= self.volume_dos_sons <= 1.5:
+            erros.append("o volume dos sons vai de 0,3 a 1,5")
+        if self.caracteres_por_linha is not None and not 10 <= self.caracteres_por_linha <= 42:
+            erros.append("a legenda vai de 10 a 42 caracteres por linha")
+        from editor import sons
+
+        if self.tema_dos_sons not in sons.temas():
+            erros.append(f"tema de sons desconhecido: {self.tema_dos_sons} "
+                         f"(use {', '.join(sons.temas())})")
         return erros
 
     @classmethod

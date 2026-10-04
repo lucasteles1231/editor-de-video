@@ -36,7 +36,7 @@ export function comecarTour(): void {
           side: 'right',
           align: 'start',
           title: '2. Escolha as edições',
-          description: 'Cortes de silêncio, zoom de ênfase, palavras que saltam da legenda, ícones e efeitos sonoros. Ligue só o que quiser.',
+          description: 'Comece por um preset (gameplay, vlog, review, explicação técnica, humor…) e ajuste o que quiser: cortes de silêncio, zoom, palavras que saltam, ícones, o ritmo e os sons. O botão Ouvir toca cada tema.',
         },
       },
       {

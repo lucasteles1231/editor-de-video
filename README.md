@@ -104,8 +104,16 @@ sugestões do Gemini, com uma chave grátis sua.
   </tr>
   <tr>
     <td><img src="docs/img/funcoes/sons.svg" width="44" alt=""></td>
-    <td><b>Efeitos sonoros.</b> Um pop no adesivo e no ícone, e um whoosh na troca de zoom,
-    baixinhos e por baixo da sua voz.</td>
+    <td><b>Efeitos sonoros.</b> Sete temas, do pop de sempre ao de videogame, ao de humor e
+    ao épico. A palavra também chama o som dela ("dinheiro" toca moedas, "errado" uma
+    buzina) e, se quiser, cada corte ganha um clique. Tudo por baixo da sua voz. Veja
+    <a href="#efeitos-sonoros">Efeitos sonoros</a>.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/img/funcoes/presets.svg" width="44" alt=""></td>
+    <td><b>Presets.</b> Short de gameplay, de vlog e de review, explicação técnica, humor,
+    motivacional, corte de podcast e aula. Um clique muda o ritmo, os sons, a legenda, a
+    saída e a thumbnail, e tudo continua editável. Veja <a href="#presets">Presets</a>.</td>
   </tr>
   <tr>
     <td><img src="docs/img/funcoes/thumbnail.svg" width="44" alt=""></td>
@@ -156,8 +164,10 @@ escolher as edições, escolher a saída e, se quiser, a thumbnail.
 
 - **Envio:** um vídeo só, ou a montagem em camadas: o fundo, a pessoa ou o personagem, e
   a escolha de onde vem o áudio (o fundo, a pessoa ou um arquivo separado).
-- **Edições:** ligue e desligue cada efeito, e ajuste a pausa máxima e a força do zoom.
-- **Legenda:** o idioma da fala, o tamanho do modelo e se quer o `.srt` e o `.vtt`.
+- **Edições:** comece por um preset e ajuste o que quiser: cada efeito, o ritmo, a pausa,
+  o zoom e os sons, com um botão para ouvir cada tema.
+- **Legenda:** o idioma da fala, o tamanho do modelo, o tamanho da letra, quantas letras
+  cabem numa linha e se quer o `.srt` e o `.vtt`.
 - **Saída:** a extensão (MP4, MOV, WebM, MKV ou GIF), o codec, a resolução, os quadros por
   segundo e a qualidade. Só aparece o que o seu computador consegue gravar.
 - **Só os primeiros 15 s:** uma prévia rápida para conferir o estilo antes de editar o vídeo
@@ -253,6 +263,75 @@ separados. No passo 1, escolha **Um fundo e, por cima, você ou um personagem**:
 A pessoa (ou o personagem) começa embaixo no meio, em pé, ou embaixo à direita, deitado e
 quadrado. Em alguns cortes, ela anda: com um ícone, para o lado oposto ao dele; com uma
 palavra saltando, para perto. **Mover a pessoa**, no passo 2, desliga isso.
+
+## Presets
+
+O passo 2 começa pelos presets, um ponto de partida para cada tipo de vídeo. Escolher um
+muda o ritmo e as edições, os sons, a legenda, a saída e a thumbnail. Cada valor continua
+editável, e mexer em qualquer um troca a marca para **Personalizado**.
+
+| Preset | Para quê | O que ele muda |
+|---|---|---|
+| **Padrão** | o equilíbrio de sempre | pausa de 0,45 s, zoom de 12%, o pop e o whoosh |
+| **Short de gameplay** | jogo e ação | pausa de 0,30 s, ritmo 1,5×, sons de videogame com um clique em cada corte, legenda de 14 letras e 60 quadros por segundo |
+| **Short de vlog** | conversa leve | pausa de 0,60 s, zoom de 8%, ritmo 0,8× e sons suaves |
+| **Short de review** | opinião sobre um produto | o ritmo do padrão, sons de cliques e confirmações e thumbnail com número |
+| **Explicação técnica** | explicar com calma | ritmo 0,7×, zoom de 6%, sons discretos e legenda de 20 letras |
+| **Humor** | tempo de piada | pausa de 0,25 s, zoom de 18%, ritmo 1,6× e sons engraçados, também nos cortes |
+| **Motivacional** | frases de impacto | legenda grande, de 14 letras, e sons épicos |
+| **Corte de podcast** | conversa que respira | pausa de 0,80 s, respiro de 0,25 s, ritmo 0,6×, quase nenhum som e a pessoa parada |
+| **Aula ou tutorial longo** | vídeo longo e deitado | ritmo 0,5×, legenda de 36 letras, quadro deitado e thumbnail 16:9 |
+
+- **Os de Short** deixam a montagem em pé e a thumbnail em 1080×1920.
+- **O ritmo** multiplica quantos adesivos, ícones, zooms e sons entram. Em 2×, entra o
+  dobro, mais perto um do outro; em 0,5×, a metade.
+- **O respiro** é o silêncio que fica no lugar de uma pausa cortada.
+- **No terminal,** é `--preset gameplay`. Veja [No terminal](#no-terminal).
+
+## Efeitos sonoros
+
+Os sons tocam em três momentos:
+
+- **No que aparece e no que muda:** um som no adesivo e no ícone, e outro na troca de
+  zoom e quando a pessoa anda. Cada tema tem de duas a quatro variações de cada som, que
+  se revezam em ordem. Assim, o mesmo vídeo soa sempre igual.
+- **Por palavra:** a palavra dita chama o som dela, como na tabela abaixo.
+- **Em cada corte, se você ligar:** um clique baixo, no estilo dos vídeos de jogo.
+
+Dois sons nunca tocam juntos. Quando caem no mesmo instante, fica o mais importante: o do
+adesivo, depois o do ícone, o da palavra, o da transição e, por último, o do corte.
+
+| Tema | Soa como |
+|---|---|
+| **Padrão** | o pop e o whoosh de sempre, feitos em código |
+| **Suave** | cordas dedilhadas, gotas e vidro |
+| **Gameplay** | videogame: pulos, lasers e cliques |
+| **Review** | cliques e confirmações |
+| **Técnico** | tiques, vidro e cliques, bem discretos |
+| **Humor** | bong, pulos e disco arranhado |
+| **Épico** | socos e impactos de metal |
+
+| A palavra | Toca |
+|---|---|
+| dinheiro, grana, pix, preço, lucro… | moedas |
+| errado, erro, falhou, problema, bug… | uma buzina de erro |
+| certo, correto, perfeito, funcionou… | um sino de acerto |
+| a que fecha uma pergunta ("?") | um som de dúvida |
+| bomba, explodiu, incrível, absurdo… | um impacto |
+| rápido, correr, voar… | um whoosh |
+| código, programar, digitar, teclado… | teclas |
+| relógio, minuto, horas, prazo… | um tique-taque |
+| ganhou, venceu, vitória, campeão… | um jingle de vitória |
+| perdeu, derrota, fracasso… | um jingle de derrota |
+
+- **Ícone com som:** quando a palavra também chama um ícone (o "dinheiro" chama a
+  moeda), o ícone aparece com o som da palavra.
+- **De onde vêm:** os sons de arquivo são da [Kenney](https://kenney.nl), em domínio
+  público (CC0), e vão junto no editor: 61 arquivos, uns 520 KB.
+- **O volume:** todos saem nivelados pelo volume que o ouvido sente, para nenhum tema
+  soar mais alto que outro, e ficam sempre por baixo da sua voz. O volume dos sons, no
+  passo 2, sobe ou desce todos juntos.
+- **Ouvir antes:** o botão **Ouvir**, ao lado do tema, toca uma amostra dele.
 
 ## Começo rápido
 
@@ -381,6 +460,9 @@ O resultado sai ao lado do original, como `meu-video-editado.mp4`, junto com o
 editar aula.mov --srt --vtt                       # também grava as legendas à parte
 editar video.mp4 --previa 15                      # só os primeiros 15 s, para testar
 editar video.mp4 --formato webm --resolucao 720p  # WebM (VP9) em 720p
+editar jogo.mp4 --preset gameplay                 # o preset de gameplay (veja --presets)
+editar jogo.mp4 --preset gameplay --ritmo 1.2     # o preset, com o ritmo um pouco menor
+editar video.mp4 --tema-dos-sons humor --som-nos-cortes
 editar video.mp4 --sem-zoom --sem-sons            # sem zoom e sem efeitos sonoros
 editar eu.mp4 --fundo tela.mp4 --quadro vertical  # você por cima da tela gravada, em pé
 editar --fundo jogo.mp4 --personagem boneco.gif --audio narracao.m4a
@@ -396,15 +478,25 @@ editar --formatos                                 # o que este computador grava
 | Opção | O que faz | Padrão |
 |---|---|---|
 | `-o`, `--saida` | onde gravar | `<nome>-editado.<ext>` |
+| `--preset` | o ponto de partida: `padrao`, `gameplay`, `vlog`, `review`, `tecnico`, `humor`, `motivacional`, `podcast` ou `aula` | `padrao` |
+| `--presets` | mostra os presets | |
 | `--sem-cortes` | não corta os silêncios | |
 | `--sem-zoom` | sem zoom de ênfase | |
 | `--sem-adesivos` | sem palavras que saltam | |
 | `--sem-icones` | sem ícones automáticos | |
 | `--sem-sons` | sem efeitos sonoros | |
 | `--pausa S` | a maior pausa que fica sem corte, em segundos | `0.45` |
+| `--respiro S` | o silêncio que fica no lugar de uma pausa cortada | `0.15` |
+| `--ritmo N` | de `0.5` a `2`: quantos efeitos entram, e o quanto perto | `1` |
 | `--zoom N` | o nível do zoom (`1.12` = 12%) | `1.12` |
+| `--empurrao N` | o zoom rápido de cada adesivo (`0.06` = 6%; `0` desliga) | `0.06` |
 | `--ancora X,Y` | o centro do zoom, de 0 a 1 | `0.5,0.4` |
 | `--tamanho-legenda N` | `0.8` menor, `1.25` maior | `1.0` |
+| `--caracteres-por-linha N` | de 10 a 42: a largura da legenda | 18 em pé, 32 deitado |
+| `--tema-dos-sons` | `padrao`, `suave`, `gameplay`, `review`, `tecnico`, `humor` ou `epico` | `padrao` |
+| `--volume-dos-sons N` | de `0.3` a `1.5` | `1` |
+| `--som-nos-cortes` | um clique baixo em cada corte | |
+| `--sem-sons-por-palavra` | sem o som de cada palavra ("dinheiro" e as moedas) | |
 | `--fundo` | a montagem: o vídeo de fundo, sem pessoa | |
 | `--pessoa` | o vídeo de você falando, por cima do fundo | o vídeo do argumento |
 | `--personagem` | um GIF, PNG animado ou WebP, em loop por cima | |
@@ -412,7 +504,7 @@ editar --formatos                                 # o que este computador grava
 | `--fala` | de onde vem o áudio: `fundo`, `pessoa` ou `audio` | o `--audio`; senão a pessoa, se tiver som; senão o fundo |
 | `--recorte` | `transparente` (o vídeo já vem sem fundo) ou `modnet` | detectado no arquivo |
 | `--quadro` | `fundo`, `vertical`, `horizontal` ou `quadrado` | `fundo` |
-| `--parada` | quem está por cima não muda de lugar | |
+| `--parada`, `--mover` | quem está por cima fica parado, ou muda de lugar | muda |
 | `--manter-fundo-do-personagem` | não tira o fundo de cor única do personagem | |
 | `--idioma` | o idioma da fala (`pt`, `en`, `es`…) | `pt` |
 | `--modelo` | `tiny`, `base`, `small` ou `medium` | `small` |
@@ -427,7 +519,8 @@ editar --formatos                                 # o que este computador grava
 | `--sem-navegador` | abre a interface sem abrir o navegador | |
 | `--formatos` | mostra os formatos e codecs que este computador grava | |
 
-`editar --ajuda` mostra a mesma lista.
+Os padrões da tabela são os do preset `padrao`. Com `--preset`, valem os do preset
+escolhido, e as flags passadas ganham dele. `editar --ajuda` mostra a mesma lista.
 
 </details>
 
@@ -491,6 +584,7 @@ Medido num MacBook com **Apple M5** (10 núcleos), num vídeo vertical 1080×192
 | 1 min 46 s | 1 min 12 s (34 s de pausas cortadas) | **51 s** | ~11 s transcrevendo (`small`) e ~40 s desenhando e gravando |
 | o mesmo, em 720p | 1 min 12 s | 28 s | já transcrito |
 | 27 s | 18 s | 12 s | |
+| o mesmo, a 60 quadros por segundo (o preset de gameplay) | 18 s | 20 s | já transcrito; a 25 quadros, 10 s |
 
 O pico de memória ficou em 1,3 GB. Num computador mais modesto, conte com mais tempo.
 
@@ -674,6 +768,8 @@ adesivos e ícones, só que para o vídeo de qualquer pessoa.
 - **Atenção ao Remotion**, usado na prévia da thumbnail. Ele **não é MIT**: é grátis
   para pessoas físicas e empresas com até 3 funcionários, e empresas maiores precisam de
   uma [licença da Remotion](https://www.remotion.pro/license).
+- Os efeitos sonoros de arquivo são da [Kenney](https://kenney.nl), em domínio público
+  (CC0).
 - O vídeo das imagens deste README é
   ["Man doing podcast"](https://www.pexels.com/video/man-doing-podcast-6892735/), de
   cottonbro studio, no Pexels.

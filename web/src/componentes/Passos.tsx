@@ -6,7 +6,8 @@ import {api} from '../api';
 import {falaEfetiva, opcoesDeFala, semSom} from '../fala';
 import {bytes, duracao, numero} from '../formatar';
 import type {
-  AudioInfo, Edicao, Estado, Fala, FormatoDoQuadro, Modo, MontagemConfig, PersonagemInfo, PorCima, Saida, VideoInfo,
+  AudioInfo, Edicao, Estado, Fala, FormatoDoQuadro, Modo, MontagemConfig, PersonagemInfo, PorCima, Preset, Saida,
+  VideoInfo,
 } from '../tipos';
 import {Interruptor} from './Interruptor';
 
@@ -250,51 +251,131 @@ export const PassoEdicoes: React.FC<{
   edicao: Edicao; mudar: (p: Partial<Edicao>) => void;
   /** Na montagem, o que vai por cima (e pode mudar de lugar); ``null`` no vídeo único. */
   porCima: PorCima | null;
-}> = ({edicao, mudar, porCima}) => (
-  <section className="passo" id="passo-edicoes">
-    <Cabeca n={2} titulo="Escolha as edições"
-      texto="Tudo decidido por regras, sem IA na nuvem: o mesmo vídeo sai sempre igual." />
-    <div className="grade">
-      <Interruptor ligado={edicao.cortes} aoMudar={(v) => mudar({cortes: v})} titulo="Cortar silêncios"
-        descricao="Tira as pausas longas entre as frases. A legenda acompanha o corte." />
-      <Interruptor ligado={edicao.zoom} aoMudar={(v) => mudar({zoom: v})} titulo="Zoom de ênfase"
-        descricao="Aproxima e afasta nos cortes, e dá um empurrão nas palavras que saltam." />
-      <Interruptor ligado={edicao.adesivos} aoMudar={(v) => mudar({adesivos: v})} titulo="Palavras que saltam"
-        descricao="Números e nomes saltam da legenda num adesivo colorido." />
-      <Interruptor ligado={edicao.icones} aoMudar={(v) => mudar({icones: v})} titulo="Ícones automáticos"
-        descricao="Quando a fala cita “dinheiro”, “celular”, “foguete”… o ícone aparece." />
-      <Interruptor ligado={edicao.sons} aoMudar={(v) => mudar({sons: v})} titulo="Efeitos sonoros"
-        descricao="Um pop quando algo aparece, um whoosh quando o zoom troca ou a pessoa muda de lugar." />
-      {porCima ? (
-        <Interruptor ligado={edicao.mover} aoMudar={(v) => mudar({mover: v})}
-          titulo={porCima === 'personagem' ? 'Mover o personagem' : 'Mover a pessoa'}
-          descricao="Em alguns cortes, vai para um lado, para o meio, para cima, para baixo, para perto ou para longe." />
-      ) : null}
-    </div>
-    <div className="campos">
-      <label className="campo">
-        <span>Pausa máxima: {numero(edicao.pausa_maxima, 2)} s</span>
-        <input type="range" min={0.2} max={1.5} step={0.05} value={edicao.pausa_maxima}
-          disabled={!edicao.cortes} onChange={(e) => mudar({pausa_maxima: Number(e.target.value)})} />
-        <small>Pausas maiores que isto viram corte.</small>
-      </label>
-      <label className="campo">
-        <span>Zoom: {numero((edicao.nivel_zoom - 1) * 100)}%</span>
-        <input type="range" min={1} max={1.3} step={0.01} value={edicao.nivel_zoom}
-          disabled={!edicao.zoom} onChange={(e) => mudar({nivel_zoom: Number(e.target.value)})} />
-        <small>Quanto a câmera aproxima.</small>
-      </label>
-      <label className="campo">
-        <span>Centro do zoom (altura): {numero(edicao.ancora_y * 100)}%</span>
-        <input type="range" min={0.1} max={0.9} step={0.01} value={edicao.ancora_y}
-          disabled={!edicao.zoom} onChange={(e) => mudar({ancora_y: Number(e.target.value)})} />
-        <small>40% fica no rosto de quem fala para a câmera.</small>
-      </label>
-    </div>
-  </section>
-);
+  presets: Preset[];
+  /** O preset que bate com a tela; ``null`` é "Personalizado". */
+  marcado: string | null;
+  aoEscolherPreset: (p: Preset) => void;
+  temas: Record<string, string>;
+}> = ({edicao, mudar, porCima, presets, marcado, aoEscolherPreset, temas}) => {
+  const tocando = useRef<HTMLAudioElement | null>(null);
+  const ouvir = () => {
+    tocando.current?.pause();
+    const som = new Audio(api.somDoTemaUrl(edicao.tema_dos_sons, edicao.volume_dos_sons));
+    tocando.current = som;
+    som.play().catch(() => undefined);
+  };
+  return (
+    <section className="passo" id="passo-edicoes">
+      <Cabeca n={2} titulo="Escolha as edições"
+        texto="Comece por um preset e ajuste o que quiser. Tudo decidido por regras, sem IA na nuvem: o mesmo vídeo sai sempre igual." />
+      <div className="presets" role="group" aria-label="presets de edição">
+        {presets.map((p) => (
+          <button key={p.nome} type="button" className="preset" aria-pressed={marcado === p.nome}
+            onClick={() => aoEscolherPreset(p)}>
+            <strong>{p.titulo}</strong>
+            <small>{p.frase}</small>
+          </button>
+        ))}
+        <div className={`preset personalizado${marcado === null ? ' marcado' : ''}`}
+          aria-current={marcado === null ? 'true' : undefined}>
+          <strong>Personalizado</strong>
+          <small>Vira este quando você muda algum valor de um preset.</small>
+        </div>
+      </div>
+      <div className="grade">
+        <Interruptor ligado={edicao.cortes} aoMudar={(v) => mudar({cortes: v})} titulo="Cortar silêncios"
+          descricao="Tira as pausas longas entre as frases. A legenda acompanha o corte." />
+        <Interruptor ligado={edicao.zoom} aoMudar={(v) => mudar({zoom: v})} titulo="Zoom de ênfase"
+          descricao="Aproxima e afasta nos cortes, e dá um empurrão nas palavras que saltam." />
+        <Interruptor ligado={edicao.adesivos} aoMudar={(v) => mudar({adesivos: v})} titulo="Palavras que saltam"
+          descricao="Números e nomes saltam da legenda num adesivo colorido." />
+        <Interruptor ligado={edicao.icones} aoMudar={(v) => mudar({icones: v})} titulo="Ícones automáticos"
+          descricao="Quando a fala cita “dinheiro”, “celular”, “foguete”… o ícone aparece." />
+        {porCima ? (
+          <Interruptor ligado={edicao.mover} aoMudar={(v) => mudar({mover: v})}
+            titulo={porCima === 'personagem' ? 'Mover o personagem' : 'Mover a pessoa'}
+            descricao="Em alguns cortes, vai para um lado, para o meio, para cima, para baixo, para perto ou para longe." />
+        ) : null}
+      </div>
+      <div className="campos">
+        <label className="campo">
+          <span>Ritmo: {numero(edicao.ritmo, 1)}×</span>
+          <input type="range" min={0.5} max={2} step={0.1} value={edicao.ritmo}
+            onChange={(e) => mudar({ritmo: Number(e.target.value)})} />
+          <small>Mais alto: mais adesivos, ícones, zooms e sons, mais perto um do outro.</small>
+        </label>
+        <label className="campo">
+          <span>Pausa máxima: {numero(edicao.pausa_maxima, 2)} s</span>
+          <input type="range" min={0.2} max={1.5} step={0.05} value={edicao.pausa_maxima}
+            disabled={!edicao.cortes} onChange={(e) => mudar({pausa_maxima: Number(e.target.value)})} />
+          <small>Pausas maiores que isto viram corte.</small>
+        </label>
+        <label className="campo">
+          <span>Respiro no corte: {numero(edicao.respiro, 2)} s</span>
+          <input type="range" min={0.05} max={0.4} step={0.05} value={edicao.respiro}
+            disabled={!edicao.cortes} onChange={(e) => mudar({respiro: Number(e.target.value)})} />
+          <small>O silêncio que fica no lugar da pausa cortada.</small>
+        </label>
+        <label className="campo">
+          <span>Zoom: {numero((edicao.nivel_zoom - 1) * 100)}%</span>
+          <input type="range" min={1} max={1.3} step={0.01} value={edicao.nivel_zoom}
+            disabled={!edicao.zoom} onChange={(e) => mudar({nivel_zoom: Number(e.target.value)})} />
+          <small>Quanto a câmera aproxima.</small>
+        </label>
+        <label className="campo">
+          <span>Empurrão do adesivo: {numero(edicao.empurrao * 100)}%</span>
+          <input type="range" min={0} max={0.15} step={0.01} value={edicao.empurrao}
+            disabled={!edicao.zoom || !edicao.adesivos} onChange={(e) => mudar({empurrao: Number(e.target.value)})} />
+          <small>O zoom rápido quando uma palavra salta.</small>
+        </label>
+        <label className="campo">
+          <span>Centro do zoom (altura): {numero(edicao.ancora_y * 100)}%</span>
+          <input type="range" min={0.1} max={0.9} step={0.01} value={edicao.ancora_y}
+            disabled={!edicao.zoom} onChange={(e) => mudar({ancora_y: Number(e.target.value)})} />
+          <small>40% fica no rosto de quem fala para a câmera.</small>
+        </label>
+      </div>
+      <div className="sons">
+        <div className="grade">
+          <Interruptor ligado={edicao.sons} aoMudar={(v) => mudar({sons: v})} titulo="Efeitos sonoros"
+            descricao="Um som quando algo aparece e outro quando o zoom troca ou a pessoa muda de lugar." />
+          <Interruptor ligado={edicao.sons_por_palavra} aoMudar={(v) => mudar({sons_por_palavra: v})}
+            titulo="Sons por palavra" desabilitado={!edicao.sons}
+            descricao="“Dinheiro” toca moedas, “errado” uma buzina, “funcionou” um sino." />
+          <Interruptor ligado={edicao.som_nos_cortes} aoMudar={(v) => mudar({som_nos_cortes: v})}
+            titulo="Som em cada corte" desabilitado={!edicao.sons || !edicao.cortes}
+            descricao="Um clique baixo em cada corte, no estilo dos vídeos de jogo." />
+        </div>
+        <div className="campos">
+          <div className="campo">
+            <span id="rotulo-tema">Tema dos sons</span>
+            <div className="com-botao">
+              <select aria-labelledby="rotulo-tema" value={edicao.tema_dos_sons} disabled={!edicao.sons}
+                onChange={(e) => mudar({tema_dos_sons: e.target.value})}>
+                {Object.entries(temas).map(([nome, titulo]) => <option key={nome} value={nome}>{titulo}</option>)}
+              </select>
+              <button type="button" className="botao pequeno" onClick={ouvir} disabled={!edicao.sons}>
+                Ouvir
+              </button>
+            </div>
+            <small>Sons da Kenney, em domínio público.</small>
+          </div>
+          <label className="campo">
+            <span>Volume dos sons: {numero(edicao.volume_dos_sons * 100)}%</span>
+            <input type="range" min={0.3} max={1.5} step={0.05} value={edicao.volume_dos_sons}
+              disabled={!edicao.sons} onChange={(e) => mudar({volume_dos_sons: Number(e.target.value)})} />
+            <small>A voz manda: os sons ficam sempre por baixo dela.</small>
+          </label>
+        </div>
+      </div>
+    </section>
+  );
+};
 
 // ── 3. Legenda ───────────────────────────────────────────────────────────
+
+/** As larguras de legenda oferecidas (os presets usam 14, 20 e 36). */
+const LARGURAS = [10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 42];
 
 const IDIOMAS: [string, string][] = [['pt', 'Português'], ['en', 'Inglês'], ['es', 'Espanhol'],
   ['fr', 'Francês'], ['it', 'Italiano'], ['de', 'Alemão']];
@@ -332,6 +413,15 @@ export const PassoLegenda: React.FC<{
           <span>Tamanho da letra: {numero(edicao.tamanho_legenda * 100)}%</span>
           <input type="range" min={0.6} max={1.6} step={0.05} value={edicao.tamanho_legenda}
             onChange={(e) => mudar({tamanho_legenda: Number(e.target.value)})} />
+        </label>
+        <label className="campo">
+          <span>Letras por linha</span>
+          <select value={edicao.caracteres_por_linha ?? ''}
+            onChange={(e) => mudar({caracteres_por_linha: e.target.value ? Number(e.target.value) : null})}>
+            <option value="">Automático</option>
+            {LARGURAS.map((n) => <option key={n} value={n}>Até {n}</option>)}
+          </select>
+          <small>Automático: até 18 em pé e 32 deitado. Menos letras, menos palavras por vez.</small>
         </label>
       </div>
       <div className="grade" style={{marginTop: 14}}>

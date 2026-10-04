@@ -25,6 +25,7 @@ import sys
 import threading
 import time
 import uuid
+import wave
 import webbrowser
 from importlib.resources import files
 from pathlib import Path
@@ -36,7 +37,18 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 
-from editor import __version__, ia, icones, imagens, montagem, pexels, recorte, transcricao
+from editor import (
+    __version__,
+    ia,
+    icones,
+    imagens,
+    montagem,
+    pexels,
+    presets,
+    recorte,
+    sons,
+    transcricao,
+)
 from editor import saida as saida_mod
 from editor import video as video_mod
 from editor.opcoes import OpcoesDeEdicao
@@ -99,6 +111,18 @@ def _livre(destino: Path) -> Path:
         if not outro.exists():
             return outro
     return destino.with_name(f"{destino.stem}-{uuid.uuid4().hex[:6]}{destino.suffix}")
+
+
+def _wav(amostras: np.ndarray, taxa: int) -> bytes:
+    """Um WAV mono de 16 bits."""
+    pcm = (np.clip(amostras, -1.0, 1.0) * 32767).astype("<i2").tobytes()
+    corpo = io.BytesIO()
+    with wave.open(corpo, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(taxa)
+        w.writeframes(pcm)
+    return corpo.getvalue()
 
 
 def nitidez(matriz: np.ndarray) -> float:
@@ -233,7 +257,17 @@ def criar_app(token: str, *, porta: int, pasta_saida: Path | None = None,
             "recorte": {"baixado": recorte.modelo_baixado(), "tamanho": recorte.TAMANHO},
             "pexels": pexels.estado(),
             "geracao": {"restantes": ia.geracoes_restantes(), "teto": ia.TETO_DE_IMAGENS},
+            "presets": presets.para_json(),
+            "temas_dos_sons": sons.temas(),
         }
+
+    @app.get("/api/sons/{tema}.wav")
+    def ouvir_tema(tema: str, volume: float = 1.0):
+        """Os sons de um tema em fila, para ouvir antes de editar."""
+        if tema not in sons.temas():
+            raise HTTPException(404, "tema de sons desconhecido")
+        amostras = sons.demonstracao(tema, video_mod.TAXA, min(1.5, max(0.3, volume)))
+        return Response(_wav(amostras, video_mod.TAXA), media_type="audio/wav")
 
     # ── a chave do Gemini ─────────────────────────────────────────────────
     # A chave entra pela página e nunca volta para ela: o estado só diz o fim dela.

@@ -11,12 +11,16 @@ Instituto Palito usa nos Shorts dele:
   próprio, depois palavra-chave longa —, com espaço entre um e outro;
 - **zoom**: alterna entre perto e normal nos cortes;
 - **ícones**: quando a fala cita uma coisa que tem desenho na biblioteca;
-- **sons**: um pop quando algo aparece, um whoosh quando o zoom troca;
+- **sons**: um som quando algo aparece, outro quando o zoom troca, um por palavra
+  ("dinheiro" chama moedas) e, se pedido, um curto em cada corte — todos do tema
+  escolhido (ver ``editor/sons.py``);
+- **ritmo**: um multiplicador que encurta ou alonga o espaço entre os efeitos;
 - **a pessoa que muda de lugar** (na montagem em camadas): em alguns cortes, os de
   ênfase, ela vai para um lado, o meio, para cima, para baixo, para perto ou para longe.
 """
 from __future__ import annotations
 
+import functools
 import re
 import unicodedata
 from collections.abc import Sequence
@@ -89,6 +93,13 @@ ICONE_ESPACO_S = 5.0
 ICONE_DURA_S = 1.5
 WHOOSH_ESPACO_S = 6.0
 SOM_ESPACO_S = 0.25
+#: Os sons de palavra ficam pelo menos isto um do outro; os de corte, isto.
+SOM_DE_PALAVRA_ESPACO_S = 4.0
+SOM_DE_CORTE_ESPACO_S = 1.5
+#: O som de corte não toca colado numa transição (os dois marcam o mesmo pulo).
+CORTE_LONGE_DA_TRANSICAO_S = 0.2
+#: O empurrão de zoom no adesivo, sem escolha: 6%.
+EMPURRAO_PADRAO = 0.06
 
 #: Outras palavras que chamam um ícone.
 SINONIMOS = {
@@ -192,6 +203,8 @@ class Icone:
 class Som:
     nome: str
     t: float
+    #: O volume deste som em relação aos outros (o corte entra mais baixo).
+    ganho: float = 1.0
 
 
 @dataclass
@@ -224,6 +237,8 @@ class Plano:
     trechos: list[tuple[float, float]] = field(default_factory=list)
     #: Onde a pessoa sai do lugar (vazio com a opção desligada).
     movimentos: list[Movimento] = field(default_factory=list)
+    #: O quanto o adesivo empurra o zoom (0,06 = 6%).
+    forca_do_empurrao: float = EMPURRAO_PADRAO
 
     def para_json(self) -> dict:
         dados = asdict(self)
@@ -279,8 +294,10 @@ def montar_blocos(palavras: Sequence[Palavra], duracao: float, teto: int) -> lis
     return blocos
 
 
-def escolher_adesivos(blocos: Sequence[Bloco], duracao: float) -> list[Adesivo]:
-    """As palavras que saltam: número > nome próprio > palavra-chave longa, espaçadas."""
+def escolher_adesivos(blocos: Sequence[Bloco], duracao: float, ritmo: float = 1.0
+                      ) -> list[Adesivo]:
+    """As palavras que saltam: número > nome próprio > palavra-chave longa, espaçadas. O
+    ``ritmo`` multiplica quantas e encurta o espaço entre elas."""
     candidatos = []
     for bi, b in enumerate(blocos):
         for wi, w in enumerate(b.palavras):
@@ -295,29 +312,39 @@ def escolher_adesivos(blocos: Sequence[Bloco], duracao: float) -> list[Adesivo]:
                 continue
             if b.fim - w.inicio >= ADESIVO_MINIMO_S:
                 candidatos.append((pontos, w.inicio, bi, wi))
-    quantos = 0 if duracao < 4 else max(1, int(duracao // ADESIVO_A_CADA_S))
+    quantos = 0 if duracao < 4 else max(1, int(duracao * ritmo // ADESIVO_A_CADA_S))
     escolhidos: list[tuple[float, int, int]] = []
     for _pontos, t, bi, wi in sorted(candidatos, key=lambda c: (-c[0], c[1])):
         if len(escolhidos) >= quantos:
             break
-        if all(abs(t - e[0]) >= ADESIVO_ESPACO_S for e in escolhidos):
+        if all(abs(t - e[0]) >= ADESIVO_ESPACO_S / ritmo for e in escolhidos):
             escolhidos.append((t, bi, wi))
     escolhidos.sort()
     return [Adesivo(bi, wi, t, blocos[bi].fim, k % 4) for k, (t, bi, wi) in enumerate(escolhidos)]
 
 
 def montar_zoom(duracao: float, cortes: Sequence[float], blocos: Sequence[Bloco],
-                nivel: float) -> list[tuple[float, float]]:
+                nivel: float, ritmo: float = 1.0) -> list[tuple[float, float]]:
     """Os níveis de zoom: alterna nos cortes; sem corte, no começo de cada frase."""
     pontos = list(cortes) or [b.inicio for b in blocos if b.abre_frase and b.abre_frase[0]]
     saida, atual, ultimo = [(0.0, 1.0)], 1.0, 0.0
     for t in sorted(pontos):
-        if t <= 0 or t >= duracao - 0.5 or t - ultimo < ZOOM_ESPACO_S:
+        if t <= 0 or t >= duracao - 0.5 or t - ultimo < ZOOM_ESPACO_S / ritmo:
             continue
         atual = nivel if atual == 1.0 else 1.0
         saida.append((round(t, 3), atual))
         ultimo = t
     return saida
+
+
+def _formas(n: str) -> list[str]:
+    """A palavra (sem acento) e os singulares que ela pode ter: "moedas" → "moeda"."""
+    formas = [n]
+    for fim, troca in (("oes", "ao"), ("aes", "ao"), ("ns", "m"), ("is", "l"), ("es", ""),
+                       ("s", "")):
+        if n.endswith(fim) and len(n) > len(fim) + 2:
+            formas.append(n[: -len(fim)] + troca)
+    return formas
 
 
 def casar_icone(palavra: str, anterior: str, nomes: set[str]) -> str:
@@ -327,25 +354,20 @@ def casar_icone(palavra: str, anterior: str, nomes: set[str]) -> str:
         return ""
     if n == "mundo" and _sem_acento(nua(anterior)) in ("todo", "toda"):
         return ""
-    candidatos = [n]
-    for fim, troca in (("oes", "ao"), ("aes", "ao"), ("ns", "m"), ("is", "l"), ("es", ""),
-                       ("s", "")):
-        if n.endswith(fim) and len(n) > len(fim) + 2:
-            candidatos.append(n[: -len(fim)] + troca)
-    for c in candidatos:
+    for c in _formas(n):
         nome = SINONIMOS.get(c, c)
         if nome in nomes and nome not in NAO_CHAMAM:
             return nome
     return ""
 
 
-def escolher_icones(palavras: Sequence[Palavra], duracao: float, nomes: set[str]
-                    ) -> list[Icone]:
+def escolher_icones(palavras: Sequence[Palavra], duracao: float, nomes: set[str],
+                    ritmo: float = 1.0) -> list[Icone]:
     escolhidos: list[Icone] = []
     ultimo, lado = -99.0, 1
     for i, w in enumerate(palavras):
         nome = casar_icone(w.texto, palavras[i - 1].texto if i else "", nomes)
-        if not nome or w.inicio - ultimo < ICONE_ESPACO_S:
+        if not nome or w.inicio - ultimo < ICONE_ESPACO_S / ritmo:
             continue
         escolhidos.append(Icone(nome, w.inicio, min(duracao, w.inicio + ICONE_DURA_S), lado))
         lado, ultimo = -lado, w.inicio
@@ -362,7 +384,8 @@ class _Candidato:
 
 
 def montar_movimentos(duracao: float, cortes: Sequence[float], adesivos: Sequence[Adesivo],
-                      icones: Sequence[Icone], *, vertical: bool) -> list[Movimento]:
+                      icones: Sequence[Icone], *, vertical: bool, ritmo: float = 1.0
+                      ) -> list[Movimento]:
     """Onde a pessoa sai do lugar: só em cortes, e só em alguns trechos.
 
     Um trecho vai de um corte ao seguinte e tem pelo menos ``MOVER_MINIMO_S``. Primeiro
@@ -388,7 +411,8 @@ def montar_movimentos(duracao: float, cortes: Sequence[float], adesivos: Sequenc
     escolhidos: list[_Candidato] = []
 
     def cabe(x: _Candidato) -> bool:
-        return all(x.inicio >= e.fim + MOVER_ESPACO_S or x.fim + MOVER_ESPACO_S <= e.inicio
+        espaco = MOVER_ESPACO_S / ritmo
+        return all(x.inicio >= e.fim + espaco or x.fim + espaco <= e.inicio
                    for e in escolhidos)
 
     for x in candidatos:
@@ -398,7 +422,7 @@ def montar_movimentos(duracao: float, cortes: Sequence[float], adesivos: Sequenc
         if x in escolhidos:
             continue
         parada_desde = max((e.fim for e in escolhidos if e.fim <= x.inicio), default=0.0)
-        if x.inicio - parada_desde >= MOVER_PARADA_S and cabe(x):
+        if x.inicio - parada_desde >= MOVER_PARADA_S / ritmo and cabe(x):
             escolhidos.append(x)
 
     ordem = ORDEM_VERTICAL if vertical else ORDEM_HORIZONTAL
@@ -423,25 +447,99 @@ def montar_movimentos(duracao: float, cortes: Sequence[float], adesivos: Sequenc
     return saida
 
 
+@functools.lru_cache(maxsize=1)
+def _familias() -> tuple[dict[str, str], dict[str, str]]:
+    """Palavra → família e ícone → família, do catálogo de sons."""
+    from editor import sons as sons_mod
+
+    por_palavra, por_icone = {}, {}
+    for nome, f in sons_mod.catalogo()["familias"].items():
+        for w in f.get("palavras", []):
+            por_palavra[w] = nome
+        for i in f.get("icones", []):
+            por_icone[i] = nome
+    return por_palavra, por_icone
+
+
+def casar_som(palavra: str) -> str:
+    """A família de som que esta palavra chama ("moedas", "erro"...), ou "". A palavra que
+    fecha uma pergunta chama a pergunta."""
+    if palavra.rstrip().endswith("?"):
+        return "pergunta"
+    n = _sem_acento(nua(palavra))
+    if len(n) < 3:
+        return ""
+    por_palavra, _ = _familias()
+    return next((por_palavra[f] for f in _formas(n) if f in por_palavra), "")
+
+
 def montar_sons(adesivos: Sequence[Adesivo], icones: Sequence[Icone],
                 zoom: Sequence[tuple[float, float]],
-                movimentos: Sequence[Movimento] = ()) -> list[Som]:
-    """Pop no que aparece, whoosh na troca de zoom e quando a pessoa sai do lugar; nenhum
-    som em cima do outro."""
-    candidatos = [(0, Som("pop", a.inicio)) for a in adesivos]
-    candidatos += [(1, Som("pop", i.inicio)) for i in icones]
-    # A pessoa saindo do lugar é o movimento maior: o whoosh dela entra primeiro, e os do
+                movimentos: Sequence[Movimento] = (), *, palavras: Sequence[Palavra] = (),
+                cortes: Sequence[float] = (), tema: str = "padrao",
+                som_nos_cortes: bool = False, sons_por_palavra: bool = True,
+                ritmo: float = 1.0) -> list[Som]:
+    """Os efeitos do vídeo, do tema escolhido: um som no que aparece, outro na troca de
+    zoom e quando a pessoa sai do lugar, um por palavra e, se pedido, um curto em cada
+    corte. Nenhum som em cima do outro.
+
+    A prioridade é o adesivo, o ícone, a palavra, a transição e o corte. Um ícone que tem
+    família ("dinheiro") aparece com o som dela (as moedas), e não com o do tema. As
+    variações de cada evento se revezam na ordem em que tocam."""
+    from editor import sons as sons_mod
+
+    _, por_icone = _familias()
+    # (prioridade, instante, "tema" ou "familia", evento ou família)
+    candidatos: list[tuple[int, float, str, str]] = []
+    candidatos += [(0, a.inicio, "tema", "aparicao") for a in adesivos]
+    for ic in icones:
+        familia = por_icone.get(ic.nome) if sons_por_palavra else None
+        candidatos.append((1, ic.inicio, "familia", familia) if familia
+                          else (1, ic.inicio, "tema", "aparicao"))
+    if sons_por_palavra:
+        ultimo = -99.0
+        for w in palavras:
+            familia = casar_som(w.texto)
+            if not familia or w.inicio - ultimo < SOM_DE_PALAVRA_ESPACO_S / ritmo:
+                continue
+            # A palavra que já chamou um ícone toca pelo ícone.
+            if any(abs(w.inicio - ic.inicio) < 0.05 for ic in icones):
+                continue
+            candidatos.append((2, w.inicio, "familia", familia))
+            ultimo = w.inicio
+    # A pessoa saindo do lugar é o movimento maior: o som dela entra primeiro, e os do
     # zoom ocupam o espaço que sobra.
-    whooshes: list[float] = []
+    transicoes: list[float] = []
     for t in [m.inicio for m in movimentos] + [t for t, _nivel in zoom[1:]]:
-        if all(abs(t - u) >= WHOOSH_ESPACO_S for u in whooshes):
-            whooshes.append(t)
-    candidatos += [(2, Som("whoosh", t)) for t in whooshes]
-    ficam: list[Som] = []
-    for _prioridade, som in sorted(candidatos, key=lambda c: (c[0], c[1].t)):
-        if all(abs(som.t - f.t) >= SOM_ESPACO_S for f in ficam):
-            ficam.append(som)
-    return sorted(ficam, key=lambda s: s.t)
+        if all(abs(t - u) >= WHOOSH_ESPACO_S / ritmo for u in transicoes):
+            transicoes.append(t)
+    candidatos += [(3, t, "tema", "transicao") for t in transicoes]
+    if som_nos_cortes:
+        ultimo = -99.0
+        for c in sorted(cortes):
+            if c - ultimo < SOM_DE_CORTE_ESPACO_S / ritmo:
+                continue
+            if any(abs(c - u) < CORTE_LONGE_DA_TRANSICAO_S for u in transicoes):
+                continue
+            candidatos.append((4, c, "tema", "corte"))
+            ultimo = c
+    ficam: list[tuple[int, float, str, str]] = []
+    for c in sorted(candidatos, key=lambda c: (c[0], c[1])):
+        if all(abs(c[1] - f[1]) >= SOM_ESPACO_S for f in ficam):
+            ficam.append(c)
+
+    familias = sons_mod.catalogo()["familias"]
+    vez: dict[str, int] = {}
+    saida: list[Som] = []
+    for _prioridade, t, origem, qual in sorted(ficam, key=lambda c: c[1]):
+        if origem == "tema":
+            opcoes, ganho = sons_mod.do_tema(tema, qual), sons_mod.ganho_do_evento(qual)
+        else:
+            opcoes, ganho = familias[qual]["sons"], sons_mod.ganho_do_evento("palavra")
+        k = vez.get(f"{origem}:{qual}", 0)
+        vez[f"{origem}:{qual}"] = k + 1
+        saida.append(Som(opcoes[k % len(opcoes)], t, ganho))
+    return saida
 
 
 def montar(palavras: Sequence[Palavra], duracao: float, *, vertical: bool,
@@ -451,21 +549,28 @@ def montar(palavras: Sequence[Palavra], duracao: float, *, vertical: bool,
 
     ``mover`` liga os movimentos da pessoa: só a montagem em camadas tem para onde
     levá-la."""
-    teto = TETO_VERTICAL if vertical else TETO_HORIZONTAL
+    teto = opcoes.caracteres_por_linha or (TETO_VERTICAL if vertical else TETO_HORIZONTAL)
+    ritmo = opcoes.ritmo
     blocos = montar_blocos(palavras, duracao, teto)
-    adesivos = escolher_adesivos(blocos, duracao) if opcoes.adesivos else []
-    zoom = (montar_zoom(duracao, cortes if opcoes.cortes else [], blocos, opcoes.nivel_zoom)
-            if opcoes.zoom else [(0.0, 1.0)])
+    adesivos = escolher_adesivos(blocos, duracao, ritmo) if opcoes.adesivos else []
+    zoom = (montar_zoom(duracao, cortes if opcoes.cortes else [], blocos, opcoes.nivel_zoom,
+                        ritmo) if opcoes.zoom else [(0.0, 1.0)])
     empurroes = [(a.inicio, a.fim) for a in adesivos] if opcoes.zoom else []
-    icones = escolher_icones(palavras, duracao, nomes_de_icones) if opcoes.icones else []
-    movimentos = (montar_movimentos(duracao, cortes, adesivos, icones, vertical=vertical)
-                  if mover and opcoes.cortes else [])
-    sons = montar_sons(adesivos, icones, zoom, movimentos) if opcoes.sons else []
+    icones = (escolher_icones(palavras, duracao, nomes_de_icones, ritmo) if opcoes.icones
+              else [])
+    movimentos = (montar_movimentos(duracao, cortes, adesivos, icones, vertical=vertical,
+                                    ritmo=ritmo) if mover and opcoes.cortes else [])
+    sons = (montar_sons(adesivos, icones, zoom, movimentos, palavras=palavras,
+                        cortes=cortes if opcoes.cortes else [], tema=opcoes.tema_dos_sons,
+                        som_nos_cortes=opcoes.som_nos_cortes,
+                        sons_por_palavra=opcoes.sons_por_palavra, ritmo=ritmo)
+            if opcoes.sons else [])
     return Plano(round(duracao, 3), vertical, blocos, adesivos, zoom, empurroes, icones, sons,
-                 [round(c, 3) for c in cortes], movimentos=movimentos)
+                 [round(c, 3) for c in cortes], movimentos=movimentos,
+                 forca_do_empurrao=opcoes.empurrao)
 
 
 __all__ = ["PENDURADAS", "POSICOES", "TETO_HORIZONTAL", "TETO_VERTICAL", "VAZIAS", "Adesivo",
-           "Bloco", "Icone", "Movimento", "Plano", "Som", "casar_icone", "chave",
+           "Bloco", "Icone", "Movimento", "Plano", "Som", "casar_icone", "casar_som", "chave",
            "escolher_adesivos", "escolher_icones", "montar", "montar_blocos",
            "montar_movimentos", "montar_sons", "montar_zoom", "nua"]

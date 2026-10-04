@@ -15,6 +15,7 @@ na instalação. A lista completa está aqui, com a licença de cada um.
 | **driver.js** 1.9, o tour | dentro da página montada | MIT: [`licencas/driver.js-MIT.txt`](licencas/driver.js-MIT.txt) |
 | **roughjs** 4.6, a seta e o círculo de caneta da thumbnail | dentro da página montada | MIT: [`licencas/roughjs-MIT.txt`](licencas/roughjs-MIT.txt) |
 | **Remotion** 4 e `@remotion/player`, a prévia da thumbnail | dentro da página montada | Remotion License: [`licencas/Remotion-License.md`](licencas/Remotion-License.md) |
+| 61 efeitos sonoros da **Kenney** (*Interface Sounds*, *Impact Sounds*, *UI Audio*, *Digital Audio*, *RPG Audio* e *Music Jingles*) | `editor/recursos/sons/` | Domínio público, CC0: [`licencas/Kenney-CC0.txt`](licencas/Kenney-CC0.txt) |
 | A mão apontando do **Fluent UI Emoji**, da Microsoft (*backhand index pointing right*, em 3D e em vetor, nos seis tons) | `editor/recursos/maos/` | MIT: [`licencas/FluentUI-Emoji-MIT.txt`](licencas/FluentUI-Emoji-MIT.txt) |
 
 ### Sobre a licença do Remotion

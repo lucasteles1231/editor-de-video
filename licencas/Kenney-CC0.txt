@@ -1,0 +1,21 @@
+Efeitos sonoros — Kenney (www.kenney.nl)
+
+Os sons de editor/recursos/sons/ vêm destes pacotes da Kenney, baixados de
+https://kenney.nl/assets em 04/10/2026, sem alteração nos arquivos:
+
+- Interface Sounds (1.0)
+- Impact Sounds (1.0)
+- UI Audio
+- Digital Audio
+- RPG Audio
+- Music Jingles
+
+O aviso de licença que vem em cada pacote:
+
+	Created/distributed by Kenney (www.kenney.nl)
+
+	License: (Creative Commons Zero, CC0)
+	http://creativecommons.org/publicdomain/zero/1.0/
+
+	This content is free to use in personal, educational and commercial projects.
+	Support us by crediting Kenney or www.kenney.nl (this is not mandatory)

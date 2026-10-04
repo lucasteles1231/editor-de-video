@@ -26,8 +26,8 @@ logger = logging.getLogger(__name__)
 
 #: O fade nas bordas de cada corte, para o áudio não estalar.
 FADE_S = 0.008
-#: O empurrão de zoom no adesivo: 6% em 150 ms, e volta em 300 ms.
-EMPURRAO = 0.06
+#: O empurrão de zoom no adesivo entra em 150 ms e volta em 300 ms (a força vem do plano,
+#: 6% sem escolha).
 EMPURRAO_ENTRA_S = 0.15
 EMPURRAO_SAI_S = 0.30
 
@@ -91,12 +91,12 @@ def obter_palavras(entrada: Path, duracao: float, edicao: OpcoesDeEdicao,
 
 def empurrao(p: plano.Plano, t: float) -> float:
     """O quanto a mais de zoom o adesivo dá em ``t`` (0 sem empurrão)."""
-    extra = 0.0
+    extra, forca = 0.0, p.forca_do_empurrao
     for a, b in p.empurroes:
         if a <= t < b:
-            extra = max(extra, EMPURRAO * min(1.0, (t - a) / EMPURRAO_ENTRA_S))
+            extra = max(extra, forca * min(1.0, (t - a) / EMPURRAO_ENTRA_S))
         elif b <= t < b + EMPURRAO_SAI_S:
-            extra = max(extra, EMPURRAO * (1 - (t - b) / EMPURRAO_SAI_S))
+            extra = max(extra, forca * (1 - (t - b) / EMPURRAO_SAI_S))
     return extra
 
 
@@ -124,7 +124,8 @@ def janela(largura: int, altura: int, nivel: float, ax: float, ay: float
     return x0, y0, x0 + cw, y0 + ch
 
 
-def montar_audio(audio: np.ndarray, linha: cortes.Linha, plano_: plano.Plano) -> np.ndarray:
+def montar_audio(audio: np.ndarray, linha: cortes.Linha, plano_: plano.Plano,
+                 volume: float = 1.0) -> np.ndarray:
     """O áudio só com os trechos que ficam, com fade nas bordas, e os efeitos por baixo."""
     taxa = video_mod.TAXA
     fade = max(1, int(FADE_S * taxa))
@@ -141,7 +142,7 @@ def montar_audio(audio: np.ndarray, linha: cortes.Linha, plano_: plano.Plano) ->
     if len(voz) < alvo:
         voz = np.concatenate([voz, np.zeros((alvo - len(voz), 2), np.float32)])
     if plano_.sons:
-        voz = sons.misturar(voz, sons.trilha(plano_.sons, linha.duracao, taxa))
+        voz = sons.misturar(voz, sons.trilha(plano_.sons, linha.duracao, taxa, volume))
     return np.ascontiguousarray(voz.astype(np.float32))
 
 
@@ -195,7 +196,8 @@ def _planejar(fala: Path, duracao_da_fala: float, tem_audio: bool, edicao: Opcoe
              if tem_audio else np.zeros((0, 2), np.float32))
     if edicao.cortes and palavras:
         trechos = cortes.calcular(palavras, audio.mean(axis=1) if len(audio) else None,
-                                  video_mod.TAXA, duracao, pausa_maxima=edicao.pausa_maxima)
+                                  video_mod.TAXA, duracao, pausa_maxima=edicao.pausa_maxima,
+                                  respiro=edicao.respiro)
     else:
         trechos = [cortes.Trecho(0.0, duracao)]
     linha = cortes.Linha(trechos)
@@ -203,7 +205,7 @@ def _planejar(fala: Path, duracao_da_fala: float, tem_audio: bool, edicao: Opcoe
     p = plano.montar(no_editado, linha.duracao, vertical=vertical, cortes=linha.cortes,
                      opcoes=edicao, nomes_de_icones=set(icones.nomes()), mover=mover)
     p.trechos = [(round(tr.ini, 3), round(tr.fim, 3)) for tr in linha.trechos]
-    som = montar_audio(audio, linha, p) if tem_audio else None
+    som = montar_audio(audio, linha, p, edicao.volume_dos_sons) if tem_audio else None
     avisar("cortando", 1.0, f"{len(trechos)} trecho(s), {linha.duracao:.1f} s de "
                             f"{duracao:.1f} s")
     return _Fala(linha, p, len(palavras), duracao, som)

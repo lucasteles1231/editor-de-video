@@ -4,6 +4,8 @@ from __future__ import annotations
 from itertools import pairwise
 from typing import ClassVar
 
+import pytest
+
 from editor import icones, plano
 from editor.opcoes import OpcoesDeEdicao
 from editor.transcricao import Palavra
@@ -189,3 +191,104 @@ class TestAPessoaQueMudaDeLugar:
         p = plano.montar(ws, 20.0, vertical=True, cortes=[], opcoes=sem_cortes,
                          nomes_de_icones=nomes, mover=True)
         assert p.movimentos == []
+
+
+class TestOsSonsDoTema:
+    """Os sons por tema, por palavra e por corte: quem toca, quando e com que volume."""
+
+    def test_a_palavra_chama_a_familia(self):
+        assert plano.casar_som("dinheiro") == "moedas"
+        assert plano.casar_som("Moedas,") == "moedas"            # plural e pontuação
+        assert plano.casar_som("promoção") == "moedas"           # acento
+        assert plano.casar_som("Errado!") == "erro"
+        assert plano.casar_som("funcionou") == "acerto"
+        assert plano.casar_som("programar") == "digitar"
+        for comum in ("não", "sim", "de", "coisa", "isso"):
+            assert plano.casar_som(comum) == "", comum
+
+    def test_a_pergunta(self):
+        assert plano.casar_som("sabia?") == "pergunta"
+        assert plano.casar_som("dinheiro?") == "pergunta"         # a pergunta ganha
+
+    def test_o_icone_com_familia_toca_o_som_dela(self):
+        icones_ = [plano.Icone("dinheiro", 1.0, 2.5, 1), plano.Icone("carro", 6.0, 7.5, -1)]
+        palavras = [Palavra("dinheiro", 1.0, 1.4), Palavra("carro", 6.0, 6.4)]
+        sons = plano.montar_sons([], icones_, [(0.0, 1.0)], palavras=palavras)
+        assert [(s.t, s.nome) for s in sons] == [(1.0, "handleCoins"), (6.0, "pop")]
+
+    def test_sem_sons_por_palavra_volta_ao_tema(self):
+        icones_ = [plano.Icone("dinheiro", 1.0, 2.5, 1)]
+        palavras = [Palavra("dinheiro", 1.0, 1.4), Palavra("errado", 6.0, 6.4)]
+        sons = plano.montar_sons([], icones_, [(0.0, 1.0)], palavras=palavras,
+                                 sons_por_palavra=False)
+        assert [(s.t, s.nome) for s in sons] == [(1.0, "pop")]
+
+    def test_palavras_espacadas(self):
+        palavras = _palavras("erro falha bug problema quebrou", passo=1.0)
+        sons = plano.montar_sons([], [], [(0.0, 1.0)], palavras=palavras)
+        assert [s.t for s in sons] == [0.0, 4.0]
+        assert [s.nome for s in sons] == ["error_004", "error_007"]
+
+    def test_o_som_de_corte_so_com_a_opcao_e_espacado(self):
+        cortes = [1.0, 1.5, 3.0, 3.2, 6.0]
+        assert plano.montar_sons([], [], [(0.0, 1.0)], cortes=cortes) == []
+        sons = plano.montar_sons([], [], [(0.0, 1.0)], cortes=cortes, som_nos_cortes=True)
+        assert [s.t for s in sons] == [1.0, 3.0, 6.0]
+        assert all(s.ganho == pytest.approx(0.45) for s in sons)
+
+    def test_o_corte_nao_toca_junto_da_transicao(self):
+        sons = plano.montar_sons([], [], [(0.0, 1.0), (3.0, 1.12)], cortes=[3.0],
+                                 som_nos_cortes=True)
+        assert [(s.t, s.nome) for s in sons] == [(3.0, "whoosh")]
+
+    def test_o_adesivo_ganha_da_palavra(self):
+        adesivos = [plano.Adesivo(0, 0, 1.0, 2.0, 0)]
+        sons = plano.montar_sons(adesivos, [], [(0.0, 1.0)],
+                                 palavras=[Palavra("errado", 1.1, 1.5)])
+        assert [(s.t, s.nome) for s in sons] == [(1.0, "pop")]
+
+    def test_as_variacoes_se_revezam_na_ordem(self):
+        adesivos = [plano.Adesivo(0, 0, t, t + 1.0, 0) for t in (0.0, 5.0, 10.0, 15.0, 20.0)]
+        sons = plano.montar_sons(adesivos, [], [(0.0, 1.0)], tema="gameplay")
+        variacoes = ["pepSound3", "highUp", "pepSound1", "phaseJump2"]
+        assert [s.nome for s in sons] == [*variacoes, variacoes[0]]
+
+    def test_o_mesmo_plano_sempre(self):
+        ws = _palavras("custa 3 reais o celular e o dinheiro some rápido demais " * 4, passo=0.5)
+        op = OpcoesDeEdicao(tema_dos_sons="humor", som_nos_cortes=True)
+        a, b = (plano.montar(ws, 24.0, vertical=True, cortes=[3.0, 7.0, 12.0], opcoes=op,
+                             nomes_de_icones=set(icones.nomes())) for _ in range(2))
+        assert a.sons == b.sons and a.sons
+
+
+class TestRitmoELegenda:
+    def test_o_ritmo_dois_da_mais_adesivos(self):
+        texto = " ".join(f"custa {i} reais" for i in range(12))
+        blocos = plano.montar_blocos(_palavras(texto, passo=1.0), 36.0, plano.TETO_HORIZONTAL)
+        normal = plano.escolher_adesivos(blocos, 36.0)
+        rapido = plano.escolher_adesivos(blocos, 36.0, ritmo=2.0)
+        assert len(rapido) > len(normal) == 3
+        tempos = [a.inicio for a in rapido]
+        assert all(b - a >= plano.ADESIVO_ESPACO_S / 2 for a, b in pairwise(tempos))
+
+    def test_o_ritmo_meio_espaca_o_zoom(self):
+        cortes = [1.0, 3.0, 4.0, 6.0, 8.0, 10.0, 12.0]
+        assert len(plano.montar_zoom(14.0, cortes, [], 1.12, ritmo=0.5)) < len(
+            plano.montar_zoom(14.0, cortes, [], 1.12))
+
+    def test_caracteres_por_linha_mudam_os_blocos(self):
+        ws = _palavras("o frio atinge o céu da boca e os vasos sanguíneos reagem muito rápido")
+        auto = plano.montar(ws, 8.0, vertical=False, cortes=[], opcoes=OpcoesDeEdicao(),
+                            nomes_de_icones=set())
+        estreito = plano.montar(ws, 8.0, vertical=False, cortes=[],
+                                opcoes=OpcoesDeEdicao(caracteres_por_linha=12),
+                                nomes_de_icones=set())
+        assert all(len(b.texto) <= 12 for b in estreito.blocos)
+        assert len(estreito.blocos) > len(auto.blocos)
+
+    def test_o_empurrao_vai_para_o_plano(self):
+        ws = _palavras("custa 3 reais", passo=0.6)
+        p = plano.montar(ws, 6.0, vertical=True, cortes=[], opcoes=OpcoesDeEdicao(empurrao=0.1),
+                         nomes_de_icones=set())
+        assert p.forca_do_empurrao == 0.1
+        assert p.para_json()["forca_do_empurrao"] == 0.1

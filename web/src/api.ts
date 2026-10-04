@@ -110,6 +110,9 @@ export const api = {
 
   cancelar: (id: string) => pedir(`/api/tarefas/${id}/cancelar`, {method: 'POST'}),
   videoUrl: (videoId: string) => comToken(`/api/videos/${videoId}/arquivo`),
+  /** Os sons de um tema em fila, para ouvir antes de editar. */
+  somDoTemaUrl: (tema: string, volume: number) =>
+    comToken(`/api/sons/${encodeURIComponent(tema)}.wav?volume=${volume.toFixed(2)}`),
   quadroUrl: (videoId: string, t: number, largura = 1280) =>
     comToken(`/api/videos/${videoId}/quadro?segundo=${t.toFixed(2)}&largura=${largura}`),
   quadroAutomatico: (videoId: string) =>

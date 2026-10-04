@@ -15,6 +15,29 @@ export type Edicao = {
   modelo: string;
   /** Na montagem em camadas, a pessoa (ou o personagem) muda de lugar em alguns cortes. */
   mover: boolean;
+  /** De 0,5 a 2: mais alto, mais adesivos, ícones, zooms e sons, mais próximos. */
+  ritmo: number;
+  /** O zoom que o adesivo dá (0,06 = 6%). */
+  empurrao: number;
+  /** O silêncio que fica no lugar de uma pausa cortada, em segundos. */
+  respiro: number;
+  tema_dos_sons: string;
+  som_nos_cortes: boolean;
+  sons_por_palavra: boolean;
+  volume_dos_sons: number;
+  /** A largura da legenda; ``null`` é a automática (18 em pé, 32 deitado). */
+  caracteres_por_linha: number | null;
+};
+
+/** Um ponto de partida para um tipo de vídeo (editor/presets.py). */
+export type Preset = {
+  nome: string;
+  titulo: string;
+  frase: string;
+  edicao: Partial<Edicao>;
+  saida: Pick<Saida, 'resolucao' | 'fps' | 'qualidade'>;
+  quadro: FormatoDoQuadro;
+  thumb: {modelo: Modelo; cor: Cor; tamanhos: string[]};
 };
 
 export type Saida = {
@@ -44,6 +67,9 @@ export type Estado = {
   recorte: {baixado: boolean; tamanho: string};
   pexels: EstadoChave;
   geracao: {restantes: number; teto: number};
+  presets: Preset[];
+  /** O nome de cada tema de sons para quem usa. */
+  temas_dos_sons: Record<string, string>;
 };
 
 export type VideoInfo = {
