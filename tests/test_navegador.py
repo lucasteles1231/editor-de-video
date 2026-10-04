@@ -242,9 +242,13 @@ def test_presets_e_sons(navegador, endereco, tmp_path):
     presets.get_by_role("button", name=re.compile("^Short de gameplay")).click()
     expect(marcado).to_have_text(re.compile("^Short de gameplay"))
 
-    with pagina.expect_response(lambda r: "/api/sons/gameplay.wav" in r.url) as resposta:
+    with pagina.expect_request(lambda r: "/api/sons/gameplay.wav" in r.url) as pedido:
         pagina.get_by_role("button", name="Ouvir").click()
-    assert resposta.value.status == 200
+    assert "volume=1.20" in pedido.value.url                 # o volume do preset vai junto
+    # O WebKit do Linux entrega o som ao GStreamer, e o Playwright não vê a resposta
+    # (status 0): o arquivo é conferido à parte.
+    resposta = pagina.request.get(pedido.value.url)
+    assert resposta.status == 200 and resposta.headers["content-type"] == "audio/wav"
 
     video = fazer_video(tmp_path / "jogo.mp4", segundos=3.0)
     pagina.set_input_files("#passo-envio input[type=file]", str(video))
