@@ -710,8 +710,11 @@ def sugerir(fala: str, quadros: Sequence[tuple[float, bytes]], *, idioma: str,
         logger.info("conserto de %d ideia(s): %s", len(ruins),
                     " | ".join("; ".join(p) for _, p in ruins))
         # Um conserto, com o que estava errado — o mesmo que o diretor do Stickman faz.
+        # O "ideia" é lido por quem escolhe: num teste real, ele voltou dizendo
+        # "corrigindo o modelo para classico".
         conserto = (pedido + "\n\nESTAS IDEIAS VIERAM COM PROBLEMAS. Mande de novo só elas, "
-                    "corrigidas:\n" + "\n".join(
+                    "corrigidas. O campo \"ideia\" continua dizendo a ideia para quem vai "
+                    "escolher, sem falar da correção:\n" + "\n".join(
                         f"- {json.dumps(v, ensure_ascii=False)}\n  problemas: "
                         + "; ".join(p) for v, p in ruins))
         try:

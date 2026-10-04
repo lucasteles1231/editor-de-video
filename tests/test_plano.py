@@ -118,3 +118,75 @@ class TestZoomESons:
         p = plano.montar(ws, 6.0, vertical=True, cortes=[2.0], opcoes=op,
                          nomes_de_icones=set(icones.nomes()))
         assert not p.adesivos and not p.icones and not p.sons and p.zoom == [(0.0, 1.0)]
+
+
+class TestAPessoaQueMudaDeLugar:
+    """A pessoa só sai do lugar em cortes, só em alguns trechos, e sempre do mesmo jeito."""
+
+    CORTES: ClassVar[list[float]] = [2.5, 5.0, 8.0, 10.75, 12.24, 13.55, 14.94]
+
+    def _movimentos(self, adesivos=(), icones=(), cortes=None, duracao=18.0, vertical=True):
+        return plano.montar_movimentos(duracao, cortes or self.CORTES, list(adesivos),
+                                       list(icones), vertical=vertical)
+
+    def test_comecam_em_cortes_e_respeitam_o_espaco(self):
+        ms = self._movimentos(icones=[plano.Icone("dinheiro", 12.8, 14.3, -1)])
+        assert ms, "nenhum movimento"
+        for m in ms:
+            assert m.inicio in self.CORTES
+            assert m.fim - m.inicio >= plano.MOVER_MINIMO_S
+        for a, b in pairwise(ms):
+            assert b.inicio - a.fim >= plano.MOVER_ESPACO_S
+
+    def test_o_icone_fica_do_lado_livre(self):
+        """Com um ícone no trecho, a pessoa vai para o lado oposto ao dele."""
+        ms = self._movimentos(icones=[plano.Icone("dinheiro", 12.8, 14.3, -1)])
+        do_icone = next(m for m in ms if m.inicio == 12.24)
+        assert do_icone.posicao == "direita"
+        ms = self._movimentos(icones=[plano.Icone("dinheiro", 12.8, 14.3, 1)])
+        assert next(m for m in ms if m.inicio == 12.24).posicao == "esquerda"
+
+    def test_com_adesivo_ela_vem_para_perto(self):
+        adesivo = plano.Adesivo(0, 0, 8.4, 9.5, 0)
+        ms = self._movimentos(adesivos=[adesivo])
+        assert next(m for m in ms if m.inicio == 8.0).posicao == "perto"
+
+    def test_perto_nao_se_repete(self):
+        """Cada trecho com um adesivo, um depois do outro: perto, e depois outra coisa."""
+        cortes = [5.0, 7.0, 10.0, 12.0, 15.0, 17.0, 20.0, 22.0]
+        adesivos = [plano.Adesivo(0, 0, c + 0.3, c + 1.2, 0) for c in cortes[::2]]
+        ms = self._movimentos(adesivos=adesivos, cortes=cortes, duracao=26.0)
+        assert [m.inicio for m in ms] == cortes[::2]
+        assert all(a.posicao != b.posicao for a, b in pairwise(ms))
+        assert ms[0].posicao == "perto"
+
+    def test_sem_enfase_so_depois_de_parada(self):
+        ms = self._movimentos()
+        assert ms[0].inicio >= plano.MOVER_PARADA_S
+
+    def test_trecho_longo_volta_deslizando(self):
+        ms = self._movimentos(cortes=[6.0], duracao=20.0)
+        assert ms == [plano.Movimento(6.0, 6.0 + plano.MOVER_MAXIMO_S, "longe", False)]
+
+    def test_o_mesmo_video_sai_sempre_igual(self):
+        icone = [plano.Icone("dinheiro", 12.8, 14.3, -1)]
+        assert self._movimentos(icones=icone) == self._movimentos(icones=icone)
+
+    def test_desligado_por_padrao_e_sem_cortes(self):
+        ws = _palavras("um dois três quatro cinco seis sete oito nove dez onze doze",
+                       pausas={4: 1.0, 8: 1.0})
+        nomes = set(icones.nomes())
+        p = plano.montar(ws, 20.0, vertical=True, cortes=self.CORTES, opcoes=OpcoesDeEdicao(),
+                         nomes_de_icones=nomes)
+        assert p.movimentos == []
+        ligado = OpcoesDeEdicao(mover_pessoa=True)
+        p = plano.montar(ws, 20.0, vertical=True, cortes=self.CORTES, opcoes=ligado,
+                         nomes_de_icones=nomes)
+        assert p.movimentos
+        # sai do lugar com um whoosh
+        whooshes = {s.t for s in p.sons if s.nome == "whoosh"}
+        assert p.movimentos[0].inicio in whooshes
+        sem_cortes = OpcoesDeEdicao(mover_pessoa=True, cortes=False)
+        p = plano.montar(ws, 20.0, vertical=True, cortes=[], opcoes=sem_cortes,
+                         nomes_de_icones=nomes)
+        assert p.movimentos == []

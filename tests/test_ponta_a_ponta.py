@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import ClassVar
 
 import av
+import numpy as np
 import pytest
 from PIL import Image
 
@@ -123,3 +124,59 @@ class TestNoTerminal:
         assert cli.main([str(video)]) == 0
         assert (video.parent / f"{video.stem}-editado.mp4").is_file()
 
+
+
+class TestAPessoaQueMudaDeLugar:
+    """Com o recorte falso: a silhueta de busto no meio do quadro."""
+
+    def _quadro(self, caminho, t: float):
+        with av.open(str(caminho)) as c:
+            for fr in c.decode(video=0):
+                if fr.time >= t:
+                    return fr.to_ndarray(format="rgb24").astype(int)
+        raise AssertionError(f"sem quadro em {t}")
+
+    def test_edita_com_a_pessoa_saindo_do_lugar(self, tmp_path):
+        import json
+
+        entrada = fazer_video(tmp_path / "e.mp4", segundos=14.0)
+        parado = render.editar(entrada, tmp_path / "parado.mp4", OpcoesDeEdicao(),
+                               saida.OpcoesDeSaida())
+        movido = render.editar(entrada, tmp_path / "movido.mp4",
+                               OpcoesDeEdicao(mover_pessoa=True), saida.OpcoesDeSaida())
+        movimentos = json.loads(movido.plano.read_text(encoding="utf-8"))["movimentos"]
+        assert movimentos, "nenhum movimento num vídeo de 14 s"
+        info = ler_info(movido.video)
+        assert info["duracao"] == pytest.approx(movido.duracao_final, abs=0.12)
+        m = movimentos[0]
+        meio = (m["inicio"] + m["fim"]) / 2
+        diferenca = np.abs(self._quadro(movido.video, meio) - self._quadro(parado.video, meio))
+        assert diferenca.mean() > 8, "o quadro do movimento saiu igual ao parado"
+        # fora dos movimentos, nada muda
+        antes = max(0.0, m["inicio"] - 0.5)
+        diferenca = np.abs(self._quadro(movido.video, antes) - self._quadro(parado.video, antes))
+        assert diferenca.mean() < 2
+
+    def test_sem_o_modelo_a_edicao_sai_com_a_pessoa_parada(self, tmp_path, monkeypatch):
+        from editor import recorte
+
+        monkeypatch.setattr(recorte, "preparar_modelo", lambda: False)
+        avisos = []
+        entrada = fazer_video(tmp_path / "e.mp4", segundos=14.0)
+        r = render.editar(entrada, tmp_path / "s.mp4", OpcoesDeEdicao(mover_pessoa=True),
+                          saida.OpcoesDeSaida(),
+                          progresso=lambda etapa, f, detalhe: avisos.append(detalhe))
+        assert r.video.is_file()
+        assert any("a pessoa fica no lugar" in a for a in avisos)
+
+    def test_no_terminal(self, tmp_path, monkeypatch):
+        from editor import cli
+
+        pedidos = []
+        monkeypatch.setattr(render, "editar", lambda entrada, destino, edicao, saida_, **kw:
+                            pedidos.append(edicao) or render.Resultado(destino, destino))
+        video = fazer_video(tmp_path / "e.mp4", segundos=1.0)
+        assert cli.main([str(video), "--mover-pessoa", "--fundo-da-pessoa", "cor",
+                         "--cor-do-fundo", "lima"]) == 0
+        assert (pedidos[0].mover_pessoa, pedidos[0].fundo_da_pessoa,
+                pedidos[0].cor_do_fundo) == (True, "cor", "lima")

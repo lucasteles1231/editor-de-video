@@ -5,6 +5,11 @@ from dataclasses import asdict, dataclass, fields
 
 from editor.transcricao import IDIOMA_PADRAO, MODELO_PADRAO, MODELOS
 
+#: O que fica atrás da pessoa quando ela muda de lugar.
+FUNDOS_DA_PESSOA = ("video", "cor")
+#: As cores do fundo liso, as mesmas da thumbnail.
+CORES = ("amarelo", "rosa", "ciano", "lima", "laranja", "roxo", "vermelho")
+
 
 @dataclass
 class OpcoesDeEdicao:
@@ -24,6 +29,12 @@ class OpcoesDeEdicao:
     tamanho_legenda: float = 1.0
     idioma: str = IDIOMA_PADRAO
     modelo: str = MODELO_PADRAO
+    #: Em alguns cortes, a pessoa recortada vai para um lado, para cima, para baixo, para
+    #: perto ou para longe. Desligado por padrão: o recorte quadro a quadro custa tempo.
+    mover_pessoa: bool = False
+    #: Atrás dela: "video" (o próprio vídeo desfocado, sem ela) ou "cor".
+    fundo_da_pessoa: str = "video"
+    cor_do_fundo: str = "roxo"
 
     def problemas(self) -> list[str]:
         erros = []
@@ -37,6 +48,10 @@ class OpcoesDeEdicao:
             erros.append("o tamanho da legenda vai de 0,5 a 2")
         if self.modelo not in MODELOS:
             erros.append(f"modelo desconhecido: {self.modelo} (use {', '.join(MODELOS)})")
+        if self.fundo_da_pessoa not in FUNDOS_DA_PESSOA:
+            erros.append(f"o fundo da pessoa é {' ou '.join(FUNDOS_DA_PESSOA)}")
+        if self.cor_do_fundo not in CORES:
+            erros.append(f"cor desconhecida: {self.cor_do_fundo} (use {', '.join(CORES)})")
         return erros
 
     @classmethod
@@ -48,4 +63,4 @@ class OpcoesDeEdicao:
         return asdict(self)
 
 
-__all__ = ["OpcoesDeEdicao"]
+__all__ = ["CORES", "FUNDOS_DA_PESSOA", "OpcoesDeEdicao"]

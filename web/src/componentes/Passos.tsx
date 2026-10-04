@@ -3,7 +3,8 @@
  */
 import React, {useRef, useState} from 'react';
 import {bytes, duracao, numero} from '../formatar';
-import type {Edicao, Estado, Saida, VideoInfo} from '../tipos';
+import {PALETA} from '../thumb/Thumb';
+import type {Cor, Edicao, Estado, Saida, VideoInfo} from '../tipos';
 import {Interruptor} from './Interruptor';
 
 const Cabeca: React.FC<{n: number; titulo: string; texto: string}> = ({n, titulo, texto}) => (
@@ -70,7 +71,55 @@ export const PassoEnvio: React.FC<{
 
 // ── 2. Edições ───────────────────────────────────────────────────────────
 
-export const PassoEdicoes: React.FC<{edicao: Edicao; mudar: (p: Partial<Edicao>) => void}> = ({edicao, mudar}) => (
+/** O custo de mover a pessoa, medido num Apple M5 em 03/10/2026: o quadro recortado custa
+ * uns 0,06 s a mais que o normal, a pessoa sai do lugar em uns 26% do vídeo editado, e ele
+ * fica com uns 70% do original. Deu +8 s num vídeo de 27 s e +21 s num de 1 min 46 s. */
+const CUSTO_POR_SEGUNDO_E_FPS = 0.06 * 0.26 * 0.7;
+
+const CORES_DO_FUNDO = Object.keys(PALETA) as Cor[];
+
+const MoverPessoa: React.FC<{
+  edicao: Edicao; mudar: (p: Partial<Edicao>) => void; video: VideoInfo | null;
+  recorte: {baixado: boolean; tamanho: string};
+}> = ({edicao, mudar, video, recorte}) => {
+  const extra = video ? video.duracao * video.fps * CUSTO_POR_SEGUNDO_E_FPS : 0;
+  return (
+    <div className="mover-pessoa">
+      <div className="campo">
+        <span>Atrás da pessoa</span>
+        <div className="linha-de-opcoes" role="group" aria-label="fundo atrás da pessoa">
+          <button type="button" className="pilula" aria-pressed={edicao.fundo_da_pessoa === 'video'}
+            onClick={() => mudar({fundo_da_pessoa: 'video'})}>O vídeo desfocado</button>
+          <button type="button" className="pilula" aria-pressed={edicao.fundo_da_pessoa === 'cor'}
+            onClick={() => mudar({fundo_da_pessoa: 'cor'})}>Uma cor</button>
+        </div>
+      </div>
+      {edicao.fundo_da_pessoa === 'cor' ? (
+        <div className="campo">
+          <span>Cor do fundo</span>
+          <div className="cores" role="group" aria-label="cor do fundo">
+            {CORES_DO_FUNDO.map((c) => (
+              <button key={c} type="button" aria-pressed={edicao.cor_do_fundo === c} aria-label={c} title={c}
+                style={{background: PALETA[c]}} onClick={() => mudar({cor_do_fundo: c})} />
+            ))}
+          </div>
+        </div>
+      ) : null}
+      <small className="custo">
+        {video
+          ? `Deixa a edição deste vídeo uns ${duracao(Math.max(5, extra))} mais lenta num computador como um MacBook M5,`
+            + ' porque a pessoa é recortada quadro a quadro nesses trechos.'
+          : 'Deixa a edição mais lenta, porque a pessoa é recortada quadro a quadro nesses trechos.'}
+        {recorte.baixado ? '' : ` Na primeira vez, o editor baixa o modelo de recorte (${recorte.tamanho}).`}
+      </small>
+    </div>
+  );
+};
+
+export const PassoEdicoes: React.FC<{
+  edicao: Edicao; mudar: (p: Partial<Edicao>) => void; video: VideoInfo | null;
+  recorte: {baixado: boolean; tamanho: string};
+}> = ({edicao, mudar, video, recorte}) => (
   <section className="passo" id="passo-edicoes">
     <Cabeca n={2} titulo="Escolha as edições"
       texto="Tudo decidido por regras, sem IA na nuvem: o mesmo vídeo sai sempre igual." />
@@ -84,8 +133,11 @@ export const PassoEdicoes: React.FC<{edicao: Edicao; mudar: (p: Partial<Edicao>)
       <Interruptor ligado={edicao.icones} aoMudar={(v) => mudar({icones: v})} titulo="Ícones automáticos"
         descricao="Quando a fala cita “dinheiro”, “celular”, “foguete”… o ícone aparece." />
       <Interruptor ligado={edicao.sons} aoMudar={(v) => mudar({sons: v})} titulo="Efeitos sonoros"
-        descricao="Um pop quando algo aparece, um whoosh quando o zoom troca." />
+        descricao="Um pop quando algo aparece, um whoosh quando o zoom troca ou a pessoa muda de lugar." />
+      <Interruptor ligado={edicao.mover_pessoa} aoMudar={(v) => mudar({mover_pessoa: v})} titulo="Mover a pessoa"
+        descricao="Em alguns cortes, a pessoa recortada vai para um lado, para cima, para baixo, para perto ou para longe." />
     </div>
+    {edicao.mover_pessoa ? <MoverPessoa edicao={edicao} mudar={mudar} video={video} recorte={recorte} /> : null}
     <div className="campos">
       <label className="campo">
         <span>Pausa máxima: {numero(edicao.pausa_maxima, 2)} s</span>

@@ -17,7 +17,7 @@ from pathlib import Path
 
 from editor import __version__
 from editor import saida as saida_mod
-from editor.opcoes import OpcoesDeEdicao
+from editor.opcoes import CORES, FUNDOS_DA_PESSOA, OpcoesDeEdicao
 from editor.transcricao import MODELOS
 
 
@@ -65,6 +65,12 @@ def argumentos() -> argparse.ArgumentParser:
                    help="centro do zoom em x,y (padrão 0.5,0.4)")
     g.add_argument("--tamanho-legenda", type=float, default=1.0,
                    help="1.0 padrão, 0.8 menor, 1.25 maior")
+    g.add_argument("--mover-pessoa", action="store_true",
+                   help="em alguns cortes, a pessoa recortada muda de lugar (mais lento)")
+    g.add_argument("--fundo-da-pessoa", default="video", choices=list(FUNDOS_DA_PESSOA),
+                   help="o que fica atrás dela: o vídeo desfocado ou uma cor")
+    g.add_argument("--cor-do-fundo", default="roxo", choices=list(CORES),
+                   help="a cor, com --fundo-da-pessoa cor")
     g.add_argument("--idioma", default="pt", help="idioma da fala (pt, en, es...)")
     g.add_argument("--modelo", default="small", choices=list(MODELOS),
                    help="tamanho do Whisper (padrão small)")
@@ -135,7 +141,8 @@ def main(argv: list[str] | None = None) -> int:
                             sons=not a.sem_sons, pausa_maxima=a.pausa, nivel_zoom=a.zoom,
                             ancora_x=a.ancora[0], ancora_y=a.ancora[1],
                             tamanho_legenda=a.tamanho_legenda, idioma=a.idioma,
-                            modelo=a.modelo)
+                            modelo=a.modelo, mover_pessoa=a.mover_pessoa,
+                            fundo_da_pessoa=a.fundo_da_pessoa, cor_do_fundo=a.cor_do_fundo)
     # Sem --formato, vale a extensão do -o: "-o final.mov" grava MOV.
     formato = a.formato or _formato_de(a.saida) or "mp4"
     saida = saida_mod.OpcoesDeSaida(formato=formato, codec=a.codec, resolucao=a.resolucao,

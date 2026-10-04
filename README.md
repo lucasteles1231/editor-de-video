@@ -49,14 +49,16 @@ sugestões do Gemini, com uma chave grátis sua.
 
 <table>
   <tr>
-    <td align="center" width="33%"><img src="docs/img/quadro-legenda.png" alt="Legenda karaokê: 'a legenda palavra' com 'legenda' em amarelo" width="240"></td>
-    <td align="center" width="33%"><img src="docs/img/quadro-adesivo.png" alt="Adesivo: a palavra 'microfone' salta num balão amarelo" width="240"></td>
-    <td align="center" width="33%"><img src="docs/img/quadro-icone.png" alt="Ícone: ao falar 'dinheiro', aparece uma moeda num balão" width="240"></td>
+    <td align="center" width="25%"><img src="docs/img/quadro-legenda.png" alt="Legenda karaokê: 'a legenda palavra' com 'legenda' em amarelo" width="200"></td>
+    <td align="center" width="25%"><img src="docs/img/quadro-adesivo.png" alt="Adesivo: a palavra 'microfone' salta num balão amarelo" width="200"></td>
+    <td align="center" width="25%"><img src="docs/img/quadro-icone.png" alt="Ícone: ao falar 'dinheiro', aparece uma moeda num balão" width="200"></td>
+    <td align="center" width="25%"><img src="docs/img/quadro-pessoa.png" alt="A pessoa recortada foi para a direita, na frente do vídeo desfocado, e a moeda apareceu no lado livre" width="200"></td>
   </tr>
   <tr>
     <td align="center"><b>Legenda karaokê</b><br><sub>a palavra acende quando é dita; a palavra-chave fica amarela</sub></td>
     <td align="center"><b>Adesivos</b><br><sub>números, nomes e palavras fortes saltam da legenda</sub></td>
     <td align="center"><b>Ícones automáticos</b><br><sub>falou "dinheiro", "celular" ou "foguete"? O ícone aparece</sub></td>
+    <td align="center"><b>A pessoa muda de lugar</b><br><sub>opcional: em alguns cortes ela vai para um lado, e o ícone ocupa o outro</sub></td>
   </tr>
 </table>
 
@@ -83,6 +85,13 @@ sugestões do Gemini, com uma chave grátis sua.
     <td><img src="docs/img/funcoes/zoom.svg" width="44" alt=""></td>
     <td><b>Zoom de ênfase.</b> O enquadramento alterna entre 100% e 112% nos cortes, o que
     esconde o "pulo" da edição, e dá um empurrão rápido em cada adesivo.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/img/funcoes/pessoa.svg" width="44" alt=""></td>
+    <td><b>A pessoa muda de lugar.</b> Opcional. Em alguns cortes, a pessoa recortada vai
+    para um lado, para cima, para baixo, para perto ou para longe, na frente do próprio
+    vídeo desfocado (sem ela) ou de uma cor. Com um ícone no trecho, ela vai para o lado
+    oposto e deixa o lugar para ele; com uma palavra saltando, ela chega mais perto.</td>
   </tr>
   <tr>
     <td><img src="docs/img/funcoes/icones.svg" width="44" alt=""></td>
@@ -113,8 +122,8 @@ sugestões do Gemini, com uma chave grátis sua.
 
 A edição do vídeo não usa IA generativa: cada decisão segue uma regra fixa, e o mesmo
 vídeo sai sempre igual. As IAs que rodam são o Whisper, que transcreve a fala, e o MODNet,
-que recorta a pessoa para a thumbnail, as duas no seu computador. O Gemini só entra se
-você colar uma chave e ligar as sugestões.
+que recorta a pessoa para a thumbnail e para movê-la no vídeo, as duas no seu computador.
+O Gemini só entra se você colar uma chave e ligar as sugestões.
 
 ## A interface
 
@@ -142,6 +151,7 @@ escolher as edições, escolher a saída e, se quiser, a thumbnail.
 <img src="docs/img/interface-progresso.png" alt="O progresso da edição, etapa por etapa, com o tempo que falta" width="300" align="right">
 
 - **Edições:** ligue e desligue cada efeito, e ajuste a pausa máxima e a força do zoom.
+  Ao ligar **Mover a pessoa**, a página mostra quanto tempo a mais a edição vai levar.
 - **Legenda:** o idioma da fala, o tamanho do modelo e se quer o `.srt` e o `.vtt`.
 - **Saída:** a extensão (MP4, MOV, WebM, MKV ou GIF), o codec, a resolução, os quadros por
   segundo e a qualidade. Só aparece o que o seu computador consegue gravar.
@@ -274,7 +284,7 @@ O navegador abre sozinho no editor. Para fechar, volte ao terminal e aperte `Ctr
 | O Python 3.12, se você ainda não tiver | ~75 MB | dentro da pasta do uv |
 | O editor e o que ele usa | ~220 MB | um ambiente só dele, criado pelo uv |
 | O modelo do Whisper (`small`) | 464 MB | Windows: `%USERPROFILE%\.cache\huggingface` · macOS: `~/.cache/huggingface` |
-| O modelo do recorte (MODNet), na primeira thumbnail com recorte | 26 MB | a mesma pasta do Hugging Face |
+| O modelo do recorte (MODNet), na primeira vez que a pessoa é recortada | 26 MB | a mesma pasta do Hugging Face |
 | As chaves do Gemini e do Pexels, se você colar | — | `config.json`, em `%LOCALAPPDATA%\editor-de-video` (Windows) ou `~/Library/Application Support/editor-de-video` (macOS) |
 | Os vídeos editados e as thumbnails | — | `editor-de-video`, dentro da pasta **Vídeos** (Windows) ou **Filmes** (macOS) |
 
@@ -338,6 +348,7 @@ editar aula.mov --srt --vtt                       # também grava as legendas à
 editar video.mp4 --previa 15                      # só os primeiros 15 s, para testar
 editar video.mp4 --formato webm --resolucao 720p  # WebM (VP9) em 720p
 editar video.mp4 --sem-zoom --sem-sons            # sem zoom e sem efeitos sonoros
+editar video.mp4 --mover-pessoa                   # a pessoa muda de lugar em alguns cortes
 editar talk.mp4 --idioma en --modelo medium       # fala em inglês, modelo maior
 editar video.mp4 -o final.mov --codec prores      # ProRes, para levar a outro editor
 editar --formatos                                 # o que este computador grava
@@ -358,6 +369,9 @@ editar --formatos                                 # o que este computador grava
 | `--zoom N` | o nível do zoom (`1.12` = 12%) | `1.12` |
 | `--ancora X,Y` | o centro do zoom, de 0 a 1 | `0.5,0.4` |
 | `--tamanho-legenda N` | `0.8` menor, `1.25` maior | `1.0` |
+| `--mover-pessoa` | em alguns cortes, a pessoa recortada muda de lugar | |
+| `--fundo-da-pessoa` | atrás dela: `video` (o vídeo desfocado) ou `cor` | `video` |
+| `--cor-do-fundo` | `amarelo`, `rosa`, `ciano`, `lima`, `laranja`, `roxo` ou `vermelho` | `roxo` |
 | `--idioma` | o idioma da fala (`pt`, `en`, `es`…) | `pt` |
 | `--modelo` | `tiny`, `base`, `small` ou `medium` | `small` |
 | `--previa S` | edita só os primeiros segundos | |
@@ -398,7 +412,7 @@ editar --formatos                                 # o que este computador grava
 flowchart TD
     V([seu vídeo]) --> W[transcrição com o Whisper, no seu computador]
     W --> C[cortes nas pausas medidas no áudio]
-    C --> P[plano: legenda, adesivos, zoom, ícones e sons]
+    C --> P[plano: legenda, adesivos, zoom, ícones, sons e onde a pessoa se move]
     P --> D[desenho quadro a quadro]
     P --> T[thumbnail, desenhada no navegador]
     R[recorte da pessoa, com o MODNet] --> T
@@ -416,9 +430,11 @@ flowchart TD
    costuma marcar o fim da palavra cedo e o começo da seguinte muito cedo, e o corte no
    tempo dele comeria sílabas ou deixaria meia pausa.
 4. O **plano** decide, por regras, cada linha de legenda, cada adesivo, zoom, ícone e
-   som. Ele vai junto do vídeo, como `.plano.json`.
+   som, e onde a pessoa muda de lugar. Ele vai junto do vídeo, como `.plano.json`.
 5. Cada quadro é **desenhado** em Python e gravado no formato escolhido. O áudio recebe
-   uma transição de 8 ms em cada corte, para não estalar.
+   uma transição de 8 ms em cada corte, para não estalar. Nos trechos em que a pessoa
+   muda de lugar, ela é recortada quadro a quadro pelo MODNet, e o fundo é o próprio
+   quadro desfocado, com a região dela preenchida pelas cores em volta.
 6. A **thumbnail** é desenhada na página. A prévia ao vivo usa o
    [Remotion Player](https://www.remotion.dev/player), e o PNG final sai do mesmo desenho,
    no próprio navegador. A pessoa é recortada pelo MODNet, com o ONNX Runtime, e as ideias
@@ -436,6 +452,17 @@ Medido num MacBook com **Apple M5** (10 núcleos), num vídeo vertical 1080×192
 | 27 s | 18 s | 12 s | |
 
 O pico de memória ficou em 1,3 GB. Num computador mais modesto, conte com mais tempo.
+
+**Mover a pessoa** deixa a edição mais lenta, porque nos trechos em que ela sai do lugar
+a pessoa é recortada quadro a quadro. Medido no mesmo M5, uma edição logo depois da
+outra, com outros programas abertos (por isso as bases são maiores que as da tabela
+acima):
+
+| Vídeo | Sem mover | Movendo | A pessoa fora do lugar |
+|---|---|---|---|
+| 1 min 46 s | 1 min 30 s | 1 min 50 s | 19 s de 1 min 12 s, em 9 trechos |
+| 27 s | 17 s | 25 s | 4 s de 18 s, em 2 trechos |
+
 Para ir mais rápido:
 
 - use a prévia de 15 s para acertar o estilo;

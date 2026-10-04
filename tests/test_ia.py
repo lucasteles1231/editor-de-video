@@ -246,6 +246,7 @@ class TestOPedido:
         assert len(r["variantes"]) == 3
         conserto = json.loads(gemini.pedidos[1].content)["contents"][0]["parts"][-1]["text"]
         assert "VIERAM COM PROBLEMAS" in conserto and "gasta" in conserto
+        assert "sem falar da correção" in conserto
 
     def test_evitar_as_chamadas_anteriores(self, de_verdade):
         gemini = _Gemini(_resposta([_variante()] * 3))

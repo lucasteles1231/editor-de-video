@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from editor import cortes, exportar, icones, plano, sons, transcricao
+from editor import cortes, exportar, icones, mover, plano, recorte, sons, transcricao
 from editor import saida as saida_mod
 from editor import video as video_mod
 from editor.legenda import Legenda
@@ -88,6 +88,17 @@ def obter_palavras(entrada: Path, info: video_mod.Info, edicao: OpcoesDeEdicao,
     return palavras
 
 
+def empurrao(p: plano.Plano, t: float) -> float:
+    """O quanto a mais de zoom o adesivo dá em ``t`` (0 sem empurrão)."""
+    extra = 0.0
+    for a, b in p.empurroes:
+        if a <= t < b:
+            extra = max(extra, EMPURRAO * min(1.0, (t - a) / EMPURRAO_ENTRA_S))
+        elif b <= t < b + EMPURRAO_SAI_S:
+            extra = max(extra, EMPURRAO * (1 - (t - b) / EMPURRAO_SAI_S))
+    return extra
+
+
 def nivel_de_zoom(p: plano.Plano, t: float) -> float:
     nivel = 1.0
     for inicio, n in p.zoom:
@@ -95,17 +106,11 @@ def nivel_de_zoom(p: plano.Plano, t: float) -> float:
             nivel = n
         else:
             break
-    extra = 0.0
-    for a, b in p.empurroes:
-        if a <= t < b:
-            extra = max(extra, EMPURRAO * min(1.0, (t - a) / EMPURRAO_ENTRA_S))
-        elif b <= t < b + EMPURRAO_SAI_S:
-            extra = max(extra, EMPURRAO * (1 - (t - b) / EMPURRAO_SAI_S))
-    return nivel * (1 + extra)
+    return nivel * (1 + empurrao(p, t))
 
 
-def recorte(largura: int, altura: int, nivel: float, ax: float, ay: float
-            ) -> tuple[float, float, float, float]:
+def janela(largura: int, altura: int, nivel: float, ax: float, ay: float
+           ) -> tuple[float, float, float, float]:
     """A janela do quadro original que o zoom mostra."""
     cw, ch = largura / nivel, altura / nivel
     x0 = min(max(ax * largura - cw / 2, 0.0), largura - cw)
@@ -134,7 +139,8 @@ def montar_audio(audio: np.ndarray, linha: cortes.Linha, plano_: plano.Plano) ->
     return np.ascontiguousarray(voz.astype(np.float32))
 
 
-def _icones(img: Image.Image, p: plano.Plano, t: float) -> None:
+def _icones(img: Image.Image, p: plano.Plano, t: float, lado_livre: int = 0) -> None:
+    """Os ícones do momento. Com a pessoa num lado, eles vão para o outro."""
     largura, altura = img.size
     raio = round(min(largura, altura) * 0.09)
     for k, ic in enumerate(p.icones):
@@ -147,10 +153,11 @@ def _icones(img: Image.Image, p: plano.Plano, t: float) -> None:
         if abs(s - 1.0) > 0.01:
             lado = max(2, round(balao.width * s))
             balao = balao.resize((lado, lado), Image.BILINEAR)
+        lado = lado_livre or ic.lado
         if p.vertical:
-            cx, cy = largura * (0.5 + 0.30 * ic.lado), altura * 0.27
+            cx, cy = largura * (0.5 + 0.30 * lado), altura * 0.27
         else:
-            cx, cy = largura * (0.5 + 0.40 * ic.lado), altura * 0.22
+            cx, cy = largura * (0.5 + 0.40 * lado), altura * 0.22
         img.paste(balao, (round(cx - balao.width / 2), round(cy - balao.height / 2)), balao)
 
 
@@ -197,6 +204,19 @@ def editar(entrada: Path, destino: Path, edicao: OpcoesDeEdicao,
 
     largura, altura = saida_mod.tamanho(info.largura, info.altura, saida_r.resolucao,
                                         saida_r.formato)
+    pessoa = None
+    if p.movimentos:
+        if not recorte.modelo_baixado():
+            avisar("desenhando", 0.0, f"baixando o modelo de recorte ({recorte.TAMANHO}), "
+                                      "só na primeira vez")
+        if recorte.preparar_modelo():
+            pessoa = mover.Pessoa(p, largura, altura, fundo=edicao.fundo_da_pessoa,
+                                  cor=edicao.cor_do_fundo)
+        else:
+            # Sem o modelo (sem internet na primeira vez), a edição sai do mesmo jeito,
+            # só que com a pessoa parada.
+            avisar("desenhando", 0.0, "sem o modelo de recorte: a pessoa fica no lugar")
+            p.movimentos = []
     fps = saida_mod.fps_de_saida(info.fps, saida_r.fps, saida_r.formato)
     legenda = Legenda(largura, altura, vertical=info.vertical, tamanho=edicao.tamanho_legenda)
     passo = 1.0 / float(fps)
@@ -216,7 +236,7 @@ def editar(entrada: Path, destino: Path, edicao: OpcoesDeEdicao,
             ultimo = matriz
             while gravador.indice < total_quadros and gravador.indice * passo <= t_out + passo / 2:
                 _desenhar_quadro(gravador, matriz, p, legenda, edicao, largura, altura,
-                                 gravador.indice * passo)
+                                 gravador.indice * passo, pessoa)
                 if gravador.indice % 15 == 0:
                     avisar("desenhando", gravador.indice / total_quadros,
                            f"quadro {gravador.indice} de {total_quadros}")
@@ -224,7 +244,7 @@ def editar(entrada: Path, destino: Path, edicao: OpcoesDeEdicao,
                         raise Cancelado
         while ultimo is not None and gravador.indice < total_quadros:
             _desenhar_quadro(gravador, ultimo, p, legenda, edicao, largura, altura,
-                             gravador.indice * passo)
+                             gravador.indice * passo, pessoa)
         avisar("finalizando", 0.5, "fechando o arquivo")
 
     plano_json = destino.with_name(destino.stem + ".plano.json")
@@ -238,15 +258,18 @@ def editar(entrada: Path, destino: Path, edicao: OpcoesDeEdicao,
 
 def _desenhar_quadro(gravador: video_mod.Gravador, matriz: np.ndarray, p: plano.Plano,
                      legenda: Legenda, edicao: OpcoesDeEdicao, largura: int, altura: int,
-                     t: float) -> None:
-    img = Image.fromarray(matriz)
-    nivel = nivel_de_zoom(p, t)
-    caixa = recorte(img.width, img.height, nivel, edicao.ancora_x, edicao.ancora_y)
-    if nivel > 1.0005 or img.size != (largura, altura):
-        img = img.resize((largura, altura), Image.BILINEAR, box=caixa)
-    _icones(img, p, t)
+                     t: float, pessoa: mover.Pessoa | None = None) -> None:
+    img = pessoa.quadro(matriz, t, empurrao(p, t)) if pessoa is not None else None
+    if img is None:
+        img = Image.fromarray(matriz)
+        nivel = nivel_de_zoom(p, t)
+        caixa = janela(img.width, img.height, nivel, edicao.ancora_x, edicao.ancora_y)
+        if nivel > 1.0005 or img.size != (largura, altura):
+            img = img.resize((largura, altura), Image.BILINEAR, box=caixa)
+    _icones(img, p, t, pessoa.lado_livre(t) if pessoa is not None else 0)
     legenda.desenhar(img, p, t)
     gravador.quadro(np.asarray(img))
 
 
-__all__ = ["Cancelado", "Resultado", "editar", "montar_audio", "nivel_de_zoom", "recorte"]
+__all__ = ["Cancelado", "Resultado", "editar", "empurrao", "janela", "montar_audio",
+           "nivel_de_zoom"]

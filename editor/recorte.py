@@ -118,9 +118,23 @@ def _carregar():
         return _sessao
 
 
-def tamanho_de_entrada(altura: int, largura: int) -> tuple[int, int]:
-    """O tamanho que o modelo recebe: lado curto perto de 512, os dois múltiplos de 32."""
-    escala = LADO_DO_MODELO / min(altura, largura)
+def preparar_modelo() -> bool:
+    """Carrega o modelo (baixando na primeira vez). False se não deu: sem internet na
+    primeira vez, por exemplo."""
+    if _falso():
+        return True
+    try:
+        _carregar()
+        return True
+    except Exception as erro:
+        logger.warning("o modelo de recorte não carregou: %s", erro)
+        return False
+
+
+def tamanho_de_entrada(altura: int, largura: int, lado: int = LADO_DO_MODELO
+                       ) -> tuple[int, int]:
+    """O tamanho que o modelo recebe: lado curto perto de ``lado``, os dois múltiplos de 32."""
+    escala = lado / min(altura, largura)
 
     def multiplo(x: float) -> int:
         return max(MULTIPLO, round(x * escala / MULTIPLO) * MULTIPLO)
@@ -128,9 +142,9 @@ def tamanho_de_entrada(altura: int, largura: int) -> tuple[int, int]:
     return multiplo(altura), multiplo(largura)
 
 
-def preparar(matriz: np.ndarray) -> np.ndarray:
+def preparar(matriz: np.ndarray, lado: int = LADO_DO_MODELO) -> np.ndarray:
     """O quadro (altura × largura × 3, uint8) no formato do modelo: 1 × 3 × A × L, de -1 a 1."""
-    alt, lar = tamanho_de_entrada(*matriz.shape[:2])
+    alt, lar = tamanho_de_entrada(*matriz.shape[:2], lado=lado)
     img = Image.fromarray(matriz).convert("RGB").resize((lar, alt), Image.BILINEAR)
     x = np.asarray(img, dtype=np.float32) / 255.0
     x = (x - 0.5) / 0.5
@@ -146,18 +160,60 @@ def _silhueta_falsa(altura: int, largura: int) -> np.ndarray:
     return (cabeca | ombros).astype(np.float32)
 
 
+def mascara_pequena(matriz: np.ndarray, lado: int = LADO_DO_MODELO) -> np.ndarray:
+    """O alfa da pessoa no tamanho que o modelo devolve (lado curto perto de ``lado``)."""
+    if _falso():
+        return _silhueta_falsa(*tamanho_de_entrada(*matriz.shape[:2], lado=lado))
+    sessao = _carregar()
+    entrada = preparar(matriz, lado)
+    saida = sessao.run(None, {sessao.get_inputs()[0].name: entrada})[0]
+    return np.clip(np.asarray(saida, dtype=np.float32).reshape(saida.shape[-2:]), 0.0, 1.0)
+
+
 def mascara(matriz: np.ndarray) -> np.ndarray:
     """O alfa da pessoa no tamanho do quadro, de 0 a 1."""
     altura, largura = matriz.shape[:2]
     if _falso():
         return _silhueta_falsa(altura, largura)
-    sessao = _carregar()
-    entrada = preparar(matriz)
-    saida = sessao.run(None, {sessao.get_inputs()[0].name: entrada})[0]
-    alfa = np.clip(np.asarray(saida, dtype=np.float32).reshape(saida.shape[-2:]), 0.0, 1.0)
+    alfa = mascara_pequena(matriz)
     img = Image.fromarray((alfa * 255).astype(np.uint8)).resize((largura, altura),
                                                                  Image.BILINEAR)
     return np.asarray(img, dtype=np.float32) / 255.0
+
+
+def regiao_da_pessoa(alfa: np.ndarray, folga: int = 1) -> np.ndarray | None:
+    """Onde fica a maior parte ligada da pessoa, com ``folga`` células em volta, no
+    tamanho do alfa (``None`` se não há pessoa nenhuma)."""
+    altura, largura = alfa.shape
+    passo = max(1, round(max(altura, largura) / 256))
+    grade = alfa[::passo, ::passo] > LIMIAR
+    if not grade.any():
+        return None
+    # A semente é a célula mais cercada de pessoa; dali a região cresce, presa à máscara.
+    from numpy.lib.stride_tricks import sliding_window_view
+
+    densidade = sliding_window_view(np.pad(grade, 4), (9, 9)).sum(axis=(2, 3))
+    i, j = np.unravel_index(int(np.argmax(densidade)), densidade.shape)
+    regiao = np.zeros_like(grade)
+    regiao[i, j] = True
+    while True:
+        cresce = _dilatar(regiao) & grade
+        if np.array_equal(cresce, regiao):
+            break
+        regiao = cresce
+    # Uma célula de folga em volta, para a borda macia (cabelo) não virar degrau.
+    for _ in range(folga):
+        regiao = _dilatar(regiao)
+    return np.repeat(np.repeat(regiao, passo, axis=0), passo, axis=1)[:altura, :largura]
+
+
+def _dilatar(regiao: np.ndarray) -> np.ndarray:
+    cresce = regiao.copy()
+    cresce[1:] |= regiao[:-1]
+    cresce[:-1] |= regiao[1:]
+    cresce[:, 1:] |= regiao[:, :-1]
+    cresce[:, :-1] |= regiao[:, 1:]
+    return cresce
 
 
 def so_a_pessoa(alfa: np.ndarray) -> np.ndarray:
@@ -168,36 +224,8 @@ def so_a_pessoa(alfa: np.ndarray) -> np.ndarray:
     quadro, e aí o enquadramento no rosto erra a conta.
     """
     alfa = np.where(alfa < ALFA_MINIMO, 0.0, alfa).astype(np.float32)
-    altura, largura = alfa.shape
-    passo = max(1, round(max(altura, largura) / 256))
-    grade = alfa[::passo, ::passo] > LIMIAR
-    if not grade.any():
-        return alfa
-    # A semente é a célula mais cercada de pessoa; dali a região cresce, presa à máscara.
-    from numpy.lib.stride_tricks import sliding_window_view
-
-    densidade = sliding_window_view(np.pad(grade, 4), (9, 9)).sum(axis=(2, 3))
-    i, j = np.unravel_index(int(np.argmax(densidade)), densidade.shape)
-    regiao = np.zeros_like(grade)
-    regiao[i, j] = True
-    while True:
-        cresce = regiao.copy()
-        cresce[1:] |= regiao[:-1]
-        cresce[:-1] |= regiao[1:]
-        cresce[:, 1:] |= regiao[:, :-1]
-        cresce[:, :-1] |= regiao[:, 1:]
-        cresce &= grade
-        if np.array_equal(cresce, regiao):
-            break
-        regiao = cresce
-    # Uma célula de folga em volta, para a borda macia (cabelo) não virar degrau.
-    folga = regiao.copy()
-    folga[1:] |= regiao[:-1]
-    folga[:-1] |= regiao[1:]
-    folga[:, 1:] |= regiao[:, :-1]
-    folga[:, :-1] |= regiao[:, 1:]
-    manter = np.repeat(np.repeat(folga, passo, axis=0), passo, axis=1)[:altura, :largura]
-    return alfa * manter
+    regiao = regiao_da_pessoa(alfa)
+    return alfa if regiao is None else alfa * regiao
 
 
 def caixas(alfa: np.ndarray) -> tuple[Caixa | None, Caixa | None]:
@@ -247,5 +275,6 @@ def png(matriz: np.ndarray, alfa: np.ndarray, largura: int | None = None) -> byt
 
 
 __all__ = ["ARQUIVO", "REPOSITORIO", "REVISAO", "TAMANHO", "Caixa", "Recorte", "caixas",
-           "mascara", "modelo_baixado", "png", "preparar", "recortar", "so_a_pessoa",
+           "mascara", "mascara_pequena", "modelo_baixado", "png", "preparar",
+           "preparar_modelo", "recortar", "regiao_da_pessoa", "so_a_pessoa",
            "tamanho_de_entrada"]

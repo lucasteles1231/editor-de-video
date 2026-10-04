@@ -11,7 +11,9 @@ Instituto Palito usa nos Shorts dele:
   próprio, depois palavra-chave longa —, com espaço entre um e outro;
 - **zoom**: alterna entre perto e normal nos cortes;
 - **ícones**: quando a fala cita uma coisa que tem desenho na biblioteca;
-- **sons**: um pop quando algo aparece, um whoosh quando o zoom troca.
+- **sons**: um pop quando algo aparece, um whoosh quando o zoom troca;
+- **a pessoa que muda de lugar** (se ligada): em alguns cortes, os de ênfase, ela vai
+  para um lado, para cima, para baixo, para perto ou para longe, revezando.
 """
 from __future__ import annotations
 
@@ -99,6 +101,24 @@ SINONIMOS = {
     "medicos": "hospital", "inteligencia": "robo", "carta": "email", "cartas": "email",
     "aula": "escola", "aulas": "escola", "professor": "escola",
 }
+# ── A pessoa que muda de lugar ───────────────────────────────────────────
+
+#: As posições sem motivo próprio, na ordem em que se revezam. Com um ícone no trecho, a
+#: pessoa vai para o lado oposto ao dele; com um adesivo, vem para perto.
+ORDEM_VERTICAL = ("longe", "esquerda", "cima", "direita", "baixo", "perto")
+ORDEM_HORIZONTAL = ("esquerda", "longe", "direita", "baixo", "cima", "perto")
+POSICOES = frozenset(ORDEM_HORIZONTAL)
+#: Um trecho entre cortes mais curto que isto fica como está: a pessoa mal chegaria.
+MOVER_MINIMO_S = 1.2
+#: O mais longo: passou disso, ela volta sozinha, deslizando.
+MOVER_MAXIMO_S = 5.0
+#: O mínimo entre a volta de um e a saída do próximo.
+MOVER_ESPACO_S = 2.5
+#: Sem ênfase, ela sai do lugar quando já está parada há tanto tempo.
+MOVER_PARADA_S = 4.5
+#: Nada no primeiro segundo.
+MOVER_DO_COMECO_S = 1.0
+
 #: Nomes de ícone que são palavras comuns demais ou ambíguas ("dado", "certo").
 NAO_CHAMAM = frozenset({"certo", "errado", "sobe", "desce", "lugar", "dado", "pessoa",
                         "pessoas", "video", "joinha", "alerta", "chave", "folha", "planta"})
@@ -174,6 +194,18 @@ class Som:
 
 
 @dataclass
+class Movimento:
+    """Um trecho em que a pessoa sai do lugar. Ele sempre começa num corte."""
+
+    inicio: float
+    fim: float
+    posicao: str
+    #: Se acaba num corte: ela volta de uma vez, e o corte esconde a volta. Senão, volta
+    #: deslizando.
+    volta_no_corte: bool = True
+
+
+@dataclass
 class Plano:
     duracao: float
     vertical: bool
@@ -189,6 +221,8 @@ class Plano:
     cortes: list[float] = field(default_factory=list)
     #: Os trechos do vídeo original que ficaram (início, fim).
     trechos: list[tuple[float, float]] = field(default_factory=list)
+    #: Onde a pessoa sai do lugar (vazio com a opção desligada).
+    movimentos: list[Movimento] = field(default_factory=list)
 
     def para_json(self) -> dict:
         dados = asdict(self)
@@ -317,16 +351,91 @@ def escolher_icones(palavras: Sequence[Palavra], duracao: float, nomes: set[str]
     return escolhidos
 
 
+@dataclass
+class _Candidato:
+    inicio: float
+    fim: float
+    volta_no_corte: bool
+    icone: Icone | None
+    adesivo: bool
+
+
+def montar_movimentos(duracao: float, cortes: Sequence[float], adesivos: Sequence[Adesivo],
+                      icones: Sequence[Icone], *, vertical: bool) -> list[Movimento]:
+    """Onde a pessoa sai do lugar: só em cortes, e só em alguns trechos.
+
+    Um trecho vai de um corte ao seguinte e tem pelo menos ``MOVER_MINIMO_S``. Primeiro
+    entram os de ênfase (um adesivo ou um ícone começando dentro); depois, os que tiram a
+    pessoa de uma parada de ``MOVER_PARADA_S``. Entre um e outro há sempre
+    ``MOVER_ESPACO_S``. Tudo por regra: o mesmo vídeo sai sempre igual.
+    """
+    todos = sorted(c for c in cortes if 0 < c < duracao)
+    candidatos: list[_Candidato] = []
+    for i, c in enumerate(todos):
+        if c < MOVER_DO_COMECO_S:
+            continue
+        seguinte = todos[i + 1] if i + 1 < len(todos) else duracao
+        if seguinte - c < MOVER_MINIMO_S:
+            continue
+        # Até o próximo corte (ou o fim do vídeo); se for longe demais, ela volta antes.
+        volta_no_corte = seguinte - c <= MOVER_MAXIMO_S
+        fim = seguinte if volta_no_corte else c + MOVER_MAXIMO_S
+        icone = next((ic for ic in icones if c <= ic.inicio < fim), None)
+        adesivo = any(c <= a.inicio < fim for a in adesivos)
+        candidatos.append(_Candidato(c, fim, volta_no_corte, icone, adesivo))
+
+    escolhidos: list[_Candidato] = []
+
+    def cabe(x: _Candidato) -> bool:
+        return all(x.inicio >= e.fim + MOVER_ESPACO_S or x.fim + MOVER_ESPACO_S <= e.inicio
+                   for e in escolhidos)
+
+    for x in candidatos:
+        if (x.icone is not None or x.adesivo) and cabe(x):
+            escolhidos.append(x)
+    for x in candidatos:
+        if x in escolhidos:
+            continue
+        parada_desde = max((e.fim for e in escolhidos if e.fim <= x.inicio), default=0.0)
+        if x.inicio - parada_desde >= MOVER_PARADA_S and cabe(x):
+            escolhidos.append(x)
+
+    ordem = ORDEM_VERTICAL if vertical else ORDEM_HORIZONTAL
+    saida: list[Movimento] = []
+    k, anterior = 0, ""
+    for x in sorted(escolhidos, key=lambda e: e.inicio):
+        if x.icone is not None:
+            posicao = "direita" if x.icone.lado < 0 else "esquerda"
+        elif x.adesivo and anterior != "perto":
+            # Perto, mas não duas vezes seguidas: num vídeo de 1 min 46 s, os quatro
+            # primeiros movimentos tinham adesivo, e os quatro iam para perto.
+            posicao = "perto"
+        else:
+            posicao = ordem[k % len(ordem)]
+            k += 1
+            if posicao == anterior:
+                posicao = ordem[k % len(ordem)]
+                k += 1
+        saida.append(Movimento(round(x.inicio, 3), round(x.fim, 3), posicao,
+                               x.volta_no_corte))
+        anterior = posicao
+    return saida
+
+
 def montar_sons(adesivos: Sequence[Adesivo], icones: Sequence[Icone],
-                zoom: Sequence[tuple[float, float]]) -> list[Som]:
-    """Pop no que aparece, whoosh na troca de zoom; nenhum som em cima do outro."""
+                zoom: Sequence[tuple[float, float]],
+                movimentos: Sequence[Movimento] = ()) -> list[Som]:
+    """Pop no que aparece, whoosh na troca de zoom e quando a pessoa sai do lugar; nenhum
+    som em cima do outro."""
     candidatos = [(0, Som("pop", a.inicio)) for a in adesivos]
     candidatos += [(1, Som("pop", i.inicio)) for i in icones]
-    ultimo = -99.0
-    for t, _nivel in zoom[1:]:
-        if t - ultimo >= WHOOSH_ESPACO_S:
-            candidatos.append((2, Som("whoosh", t)))
-            ultimo = t
+    # A pessoa saindo do lugar é o movimento maior: o whoosh dela entra primeiro, e os do
+    # zoom ocupam o espaço que sobra.
+    whooshes: list[float] = []
+    for t in [m.inicio for m in movimentos] + [t for t, _nivel in zoom[1:]]:
+        if all(abs(t - u) >= WHOOSH_ESPACO_S for u in whooshes):
+            whooshes.append(t)
+    candidatos += [(2, Som("whoosh", t)) for t in whooshes]
     ficam: list[Som] = []
     for _prioridade, som in sorted(candidatos, key=lambda c: (c[0], c[1].t)):
         if all(abs(som.t - f.t) >= SOM_ESPACO_S for f in ficam):
@@ -344,11 +453,14 @@ def montar(palavras: Sequence[Palavra], duracao: float, *, vertical: bool,
             if opcoes.zoom else [(0.0, 1.0)])
     empurroes = [(a.inicio, a.fim) for a in adesivos] if opcoes.zoom else []
     icones = escolher_icones(palavras, duracao, nomes_de_icones) if opcoes.icones else []
-    sons = montar_sons(adesivos, icones, zoom) if opcoes.sons else []
+    movimentos = (montar_movimentos(duracao, cortes, adesivos, icones, vertical=vertical)
+                  if opcoes.mover_pessoa and opcoes.cortes else [])
+    sons = montar_sons(adesivos, icones, zoom, movimentos) if opcoes.sons else []
     return Plano(round(duracao, 3), vertical, blocos, adesivos, zoom, empurroes, icones, sons,
-                 [round(c, 3) for c in cortes])
+                 [round(c, 3) for c in cortes], movimentos=movimentos)
 
 
-__all__ = ["PENDURADAS", "TETO_HORIZONTAL", "TETO_VERTICAL", "VAZIAS", "Adesivo", "Bloco",
-           "Icone", "Plano", "Som", "casar_icone", "chave", "escolher_adesivos",
-           "escolher_icones", "montar", "montar_blocos", "montar_sons", "montar_zoom", "nua"]
+__all__ = ["PENDURADAS", "POSICOES", "TETO_HORIZONTAL", "TETO_VERTICAL", "VAZIAS", "Adesivo",
+           "Bloco", "Icone", "Movimento", "Plano", "Som", "casar_icone", "chave",
+           "escolher_adesivos", "escolher_icones", "montar", "montar_blocos",
+           "montar_movimentos", "montar_sons", "montar_zoom", "nua"]

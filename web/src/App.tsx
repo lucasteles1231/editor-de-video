@@ -322,7 +322,8 @@ export const App: React.FC = () => {
           <PassoEnvio video={video} progresso={envio} erro={erroEnvio} aoEscolher={escolherArquivo} />
           {estado && edicao && saida ? (
             <>
-              <PassoEdicoes edicao={edicao} mudar={(p) => setEdicao({...edicao, ...p})} />
+              <PassoEdicoes edicao={edicao} mudar={(p) => setEdicao({...edicao, ...p})} video={video}
+                recorte={estado.recorte} />
               <PassoLegenda estado={estado} edicao={edicao} saida={saida}
                 mudar={(p) => setEdicao({...edicao, ...p})} mudarSaida={(p) => setSaida({...saida, ...p})} />
               <PassoSaida estado={estado} saida={saida} video={video} mudar={(p) => setSaida({...saida, ...p})} />

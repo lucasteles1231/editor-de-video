@@ -12,7 +12,8 @@ Gera em ``docs/img/``:
 
 - ``banner.png``: 1280×640, que serve também de prévia social do repositório;
 - ``antes-depois.png``: o mesmo instante, original e editado;
-- ``quadro-legenda.png``, ``quadro-adesivo.png`` e ``quadro-icone.png``;
+- ``quadro-legenda.png``, ``quadro-adesivo.png``, ``quadro-icone.png`` e
+  ``quadro-pessoa.png`` (de uma segunda edição, com a pessoa mudando de lugar);
 - ``interface*.png``: a página, pelo Playwright (precisa do Chromium:
   ``uv run playwright install chromium``), como ela chega para quem instala: sem chave
   nenhuma. A chave de quem gera as imagens nem é lida, porque o final dela apareceria;
@@ -60,11 +61,12 @@ S = 2
 # ── o vídeo de exemplo ─────────────────────────────────────────────────────
 
 
-def editar(exemplo: Path, pasta: Path) -> tuple[Path, dict]:
+def editar(exemplo: Path, pasta: Path, *, mover_pessoa: bool = False) -> tuple[Path, dict]:
     import json
 
-    destino = pasta / "exemplo-editado.mp4"
-    r = render.editar(exemplo, destino, OpcoesDeEdicao(), saida.OpcoesDeSaida())
+    destino = pasta / ("exemplo-movido.mp4" if mover_pessoa else "exemplo-editado.mp4")
+    r = render.editar(exemplo, destino, OpcoesDeEdicao(mover_pessoa=mover_pessoa),
+                      saida.OpcoesDeSaida())
     print(f"  editado: {r.duracao_original:.1f} s → {r.duracao_final:.1f} s")
     return r.video, json.loads(Path(r.plano).read_text(encoding="utf-8"))
 
@@ -107,6 +109,20 @@ def instantes(plano: dict) -> dict[str, float]:
             break
     return {"adesivo": adesivo["inicio"] + 0.45, "icone": icone["inicio"] + 0.55,
             "legenda": legenda_t if legenda_t is not None else plano["blocos"][1]["inicio"] + 0.3}
+
+
+def no_movimento(plano: dict) -> float:
+    """Um instante com a pessoa fora do lugar: de preferência num lado, com o ícone do
+    outro, que é o que mais mostra a função."""
+    movimentos = plano["movimentos"]
+    if not movimentos:
+        raise SystemExit("a edição com a pessoa mudando de lugar não moveu ninguém")
+    lado = [m for m in movimentos if m["posicao"] in ("esquerda", "direita")]
+    m = (lado or movimentos)[0]
+    icone = next((i for i in plano["icones"] if m["inicio"] <= i["inicio"] < m["fim"]), None)
+    if icone is not None:
+        return min(icone["inicio"] + 0.55, m["fim"] - 0.05)
+    return (m["inicio"] + m["fim"]) / 2
 
 
 def quadro(caminho: Path, t: float) -> Image.Image:
@@ -399,7 +415,8 @@ TABLER = "https://unpkg.com/@tabler/icons@3.48.0/icons/outline/{}.svg"
 #: Função → (ícone do Tabler, cor do fundo).
 FUNCOES = {
     "cortes": ("scissors", AMARELO), "legenda": ("badge-cc", ROSA),
-    "adesivos": ("sticker", CIANO), "zoom": ("zoom-in", LIMA), "icones": ("icons", ROXO),
+    "adesivos": ("sticker", CIANO), "zoom": ("zoom-in", LIMA),
+    "pessoa": ("arrows-move", ROSA), "icones": ("icons", ROXO),
     "sons": ("volume", AMARELO), "thumbnail": ("photo", ROSA), "local": ("lock", CIANO),
 }
 
@@ -445,6 +462,12 @@ def main() -> int:
             pequeno = im.resize((540, round(540 * im.height / im.width)), Image.LANCZOS)
             arredondar(pequeno, 22).save(IMG / f"quadro-{k}.png", optimize=True)
             print(f"  quadro-{k}.png")
+        movido, plano_movido = editar(args.exemplo, pasta, mover_pessoa=True)
+        quadros["pessoa"] = quadro(movido, no_movimento(plano_movido))
+        pequeno = quadros["pessoa"].resize((540, round(540 * quadros["pessoa"].height
+                                                       / quadros["pessoa"].width)), Image.LANCZOS)
+        arredondar(pequeno, 22).save(IMG / "quadro-pessoa.png", optimize=True)
+        print("  quadro-pessoa.png")
         original = quadro(args.exemplo, no_original(ts["adesivo"], plano["trechos"]))
         antes_depois(original, quadros["adesivo"]).save(IMG / "antes-depois.png", optimize=True)
         print("  antes-depois.png")

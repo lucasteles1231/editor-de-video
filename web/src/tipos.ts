@@ -13,6 +13,9 @@ export type Edicao = {
   tamanho_legenda: number;
   idioma: string;
   modelo: string;
+  mover_pessoa: boolean;
+  fundo_da_pessoa: 'video' | 'cor';
+  cor_do_fundo: Cor;
 };
 
 export type Saida = {

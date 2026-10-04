@@ -83,7 +83,17 @@ def test_tour_edicao_e_thumbnail(navegador, endereco, tmp_path):
     video = fazer_video(tmp_path / "meu video.mp4", segundos=4.0)
     pagina.set_input_files("#passo-envio input[type=file]", str(video))
     pagina.locator(".ficha").wait_for(timeout=20_000)
-    pagina.get_by_role("button", name="Editar vídeo").click()
+    # Mover a pessoa, com fundo de cor: as escolhas chegam ao servidor.
+    pagina.locator("label.interruptor", has_text="Mover a pessoa").click()
+    pagina.get_by_role("button", name="Uma cor").click()
+    pagina.get_by_role("button", name="lima", exact=True).click()
+    expect(pagina.locator(".mover-pessoa .custo")).to_contain_text("mais lenta")
+    with pagina.expect_request(lambda r: r.url.split("?")[0].endswith("/api/tarefas")
+                               and r.method == "POST") as pedido:
+        pagina.get_by_role("button", name="Editar vídeo").click()
+    edicao = pedido.value.post_data_json["edicao"]
+    assert (edicao["mover_pessoa"], edicao["fundo_da_pessoa"], edicao["cor_do_fundo"]) == (
+        True, "cor", "lima")
     pagina.locator(".miniaturas img").first.wait_for(timeout=120_000)
 
     # as três ideias viram cartões, e a primeira já é a thumbnail
