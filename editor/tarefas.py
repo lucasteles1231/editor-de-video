@@ -14,7 +14,7 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from editor import render
+from editor import bloqueio, render
 from editor import saida as saida_mod
 from editor.montagem import Montagem
 from editor.opcoes import OpcoesDeEdicao
@@ -108,7 +108,10 @@ class Gerente:
             t.estado, t.detalhe = "cancelado", "edição cancelada"
             t.destino.unlink(missing_ok=True)
         except Exception as erro:
-            t.estado, t.erro = "erro", f"{type(erro).__name__}: {erro}"
+            # O Windows barrando uma biblioteca (o Whisper carrega na hora de transcrever)
+            # vira o passo a passo para destravar.
+            t.estado, t.erro = "erro", (bloqueio.explicar(erro) if bloqueio.bloqueado(erro)
+                                        else f"{type(erro).__name__}: {erro}")
             t.detalhe = traceback.format_exc(limit=3)
             t.destino.unlink(missing_ok=True)
         finally:

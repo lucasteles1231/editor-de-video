@@ -640,11 +640,42 @@ Se quiser ficar com um só, desinstale o antigo pelo mesmo caminho por onde ele 
 </details>
 
 <details>
+<summary><b>Windows 11: "Uma política de Controle de Aplicativo bloqueou este arquivo"</b></summary>
+
+O erro completo é parecido com este:
+
+```
+ImportError: DLL load failed while importing logging: Uma política de Controle de
+Aplicativo bloqueou este arquivo.
+```
+
+(Em inglês: *An Application Control policy has blocked this file*.)
+
+- **Quem bloqueia:** o Controle Inteligente de Aplicativos (Smart App Control) do
+  Windows 11. Ele barra arquivos sem assinatura que a Microsoft ainda não conhece, como
+  os do PyAV, a biblioteca que lê e grava o vídeo. Com ele ligado, o editor não abre.
+- **O que não resolve:** instalar o Visual C++ ou liberar o editor no antivírus. É outra
+  camada do Windows.
+- **Como resolver:** desligue o Controle Inteligente de Aplicativos em **Segurança do
+  Windows → Controle de aplicativos e do navegador → Configurações do Controle
+  Inteligente de Aplicativos → Desligado**.
+- **Dá para ligar de novo?** Num Windows 11 atualizado (da atualização de abril de 2026
+  em diante), sim. Antes dela, desligar só volta reinstalando o Windows. Por isso, rode
+  o Windows Update antes.
+- **Computador de empresa:** o bloqueio pode vir de uma regra da TI. Nesse caso, fale com
+  ela.
+
+O próprio editor reconhece esse erro e mostra estes passos no lugar do traceback.
+
+</details>
+
+<details>
 <summary><b>Windows: erro de DLL ao transcrever ou ao recortar a pessoa</b></summary>
 
 O modelo de transcrição e o do recorte precisam do "Microsoft Visual C++
 Redistributable", que a maioria dos computadores já tem. Se aparecer um erro com
-`DLL load failed`, instale a versão x64
+`DLL load failed` que **não** fala em política de Controle de Aplicativo (esse está no
+item acima), instale a versão x64
 [direto da Microsoft](https://aka.ms/vs/17/release/vc_redist.x64.exe) e tente de novo.
 
 </details>

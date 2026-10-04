@@ -435,7 +435,12 @@ button.preset:hover { border-color: var(--linha); }
   font-size: 14px;
 }
 
-.aviso.erro { background: color-mix(in srgb, var(--erro) 14%, var(--papel)); border-color: var(--erro); }
+/* As quebras de linha do texto valem (a explicação do bloqueio do Windows tem passos). */
+.aviso.erro {
+  background: color-mix(in srgb, var(--erro) 14%, var(--papel));
+  border-color: var(--erro);
+  white-space: pre-line;
+}
 
 /* ── thumbnail ─────────────────────────────────────────────────────── */
 

@@ -20,7 +20,7 @@ import sys
 import time
 from pathlib import Path
 
-from editor import __version__, presets, sons
+from editor import __version__, bloqueio, presets, sons
 from editor import saida as saida_mod
 from editor.transcricao import MODELOS
 
@@ -173,6 +173,13 @@ def main(argv: list[str] | None = None) -> int:
     _utf8()
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
     a = argumentos().parse_args(argv)
+
+    # No Windows 11, o Controle Inteligente de Aplicativos pode barrar o PyAV. Sem ele
+    # nada funciona, então a explicação vem antes de tudo, no lugar do traceback.
+    aviso = bloqueio.conferir()
+    if aviso:
+        print(aviso, file=sys.stderr)
+        return 1
 
     if a.formatos:
         for formato, d in saida_mod.disponiveis().items():
