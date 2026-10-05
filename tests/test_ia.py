@@ -407,6 +407,19 @@ class TestAMontagemEmCamadas:
                                     origens=["fundo"] * 8)
         assert "personagem animado" in so_fundo
 
+    def test_o_pedido_diz_onde_vai_ser_postado(self):
+        pedido = ia.montar_pedido("fala", [1.0] * 8, idioma="pt", duracao=20.0, vertical=True,
+                                  nomes_de_icones=NOMES, plataformas=["tiktok", "reels", "x"])
+        assert "ONDE VAI SER POSTADO: TikTok" in pedido and "Instagram Reels" in pedido
+        assert "cortada em cima e embaixo" in pedido
+        so_youtube = ia.montar_pedido("fala", [1.0] * 8, idioma="pt", duracao=20.0,
+                                      vertical=False, nomes_de_icones=NOMES,
+                                      plataformas=["youtube"])
+        assert "YouTube (vídeo deitado" in so_youtube and "cortada em cima" not in so_youtube
+        assert "ONDE VAI SER POSTADO" not in ia.montar_pedido(
+            "fala", [1.0] * 8, idioma="pt", duracao=20.0, vertical=False,
+            nomes_de_icones=NOMES)
+
     def test_quadro_da_pessoa_e_fundo_do_fundo(self):
         def conferir(**muda):
             return ia.conferir(_variante(**muda), quadros=8, nomes_de_icones=set(NOMES),

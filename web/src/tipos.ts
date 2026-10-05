@@ -1,4 +1,5 @@
 /** Os formatos que o servidor fala — espelham editor/opcoes.py e editor/saida.py. */
+import type {Plataforma} from './plataformas';
 
 export type Edicao = {
   cortes: boolean;
@@ -29,15 +30,15 @@ export type Edicao = {
   caracteres_por_linha: number | null;
 };
 
-/** Um ponto de partida para um tipo de vídeo (editor/presets.py). */
+/** Um ponto de partida para um tipo de vídeo (editor/presets.py). O formato não é dele:
+ *  vem da plataforma. */
 export type Preset = {
   nome: string;
   titulo: string;
   frase: string;
   edicao: Partial<Edicao>;
   saida: Pick<Saida, 'resolucao' | 'fps' | 'qualidade'>;
-  quadro: FormatoDoQuadro;
-  thumb: {modelo: Modelo; cor: Cor; tamanhos: string[]};
+  thumb: {modelo: Modelo; cor: Cor};
 };
 
 export type Saida = {
@@ -208,6 +209,8 @@ export type ThumbConfig = {
   /** O que a ideia sugeriu buscar no Pexels e a cena para gerar. */
   busca: string;
   cena: string;
+  /** Onde o vídeo vai ser postado (passo 1); ``tamanhos`` sai delas, um por formato. */
+  plataformas: Plataforma[];
   tamanhos: string[];
 };
 

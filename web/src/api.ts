@@ -129,6 +129,17 @@ export const api = {
     return pedir<{png: string; jpg: string; jpg_bytes: number}>(
       `/api/tarefas/${tarefaId}/thumbnail`, {method: 'POST', body: dados});
   },
+  /** O botão "Baixar" do passo 5: salva na pasta (com o nome do vídeo editado, se a edição
+   *  já terminou) e devolve os nomes para baixar. */
+  salvarThumbnailDoPasso: (imagem: Blob, tamanho: string, videoId: string, tarefaId: string) => {
+    const dados = new FormData();
+    dados.append('imagem', imagem, `${tamanho}.png`);
+    dados.append('tamanho', tamanho);
+    dados.append('video_id', videoId);
+    if (tarefaId) dados.append('tarefa_id', tarefaId);
+    return pedir<{png: string; jpg: string; jpg_bytes: number}>('/api/thumbnails', {method: 'POST', body: dados});
+  },
+  thumbnailUrl: (nome: string) => comToken(`/api/thumbnails/${encodeURIComponent(nome)}`),
   abrirPasta: () => pedir('/api/abrir-pasta', {method: 'POST'}),
 
   // A chave do Gemini vai para o servidor local e nunca volta: o estado só diz o fim dela.
@@ -137,9 +148,9 @@ export const api = {
       method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({chave}),
     }),
   apagarChave: () => pedir<EstadoIa>('/api/ia/chave', {method: 'DELETE'}),
-  ideias: (tarefaId: string, evitar: string[]) =>
+  ideias: (tarefaId: string, evitar: string[], plataformas: string[]) =>
     pedir<{variantes: Ideia[]; modelo: string; segundos: number}>(`/api/tarefas/${tarefaId}/thumbs-ia`, {
-      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({evitar}),
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({evitar, plataformas}),
     }),
   recorteInfo: (videoId: string, t: number) =>
     pedir<RecorteInfo>(`/api/videos/${videoId}/recorte?segundo=${t.toFixed(2)}`),

@@ -9,6 +9,8 @@
 import {Player} from '@remotion/player';
 import React, {useEffect, useMemo, useState} from 'react';
 import {api} from '../api';
+import {bytes} from '../formatar';
+import {PLATAFORMAS, deTamanho, faixaSegura, juntar, recortesDe} from '../plataformas';
 import {PALETA, TAMANHOS, Thumb, ThumbComposicao, type ThumbProps} from '../thumb/Thumb';
 import type {Camadas, Cor, EstadoChave, Modelo, RecorteInfo, ThumbConfig, VideoInfo} from '../tipos';
 import {Interruptor} from './Interruptor';
@@ -95,8 +97,13 @@ export function propsDaThumb(config: ThumbConfig, video: VideoInfo, tamanho: str
     alvo: vistoPelaIa ? config.alvo : null,
     fonteTitulo: FONTES.titulo,
     fonteTexto: FONTES.texto,
+    seguro: faixaSegura(config.plataformas, tamanho),
   };
 }
+
+/** "Shorts, TikTok e Reels": as plataformas marcadas que pedem este tamanho. */
+const paraQuem = (config: ThumbConfig, tamanho: string) =>
+  juntar(deTamanho(config.plataformas, tamanho).map((p) => PLATAFORMAS[p].curto));
 
 type Props = {
   video: VideoInfo | null;
@@ -113,6 +120,11 @@ type Props = {
   setPexels: (e: EstadoChave) => void;
   geracao: {restantes: number; teto: number};
   setGeracao: (g: {restantes: number; teto: number}) => void;
+  /** O botão "Baixar": desenha, salva na pasta e baixa o JPG deste tamanho. */
+  aoBaixar: (tamanho: string) => void;
+  baixando: string | null;
+  baixadas: Record<string, {png: string; jpg: string; jpgBytes: number}>;
+  erro: string;
 };
 
 export const ThumbPasso: React.FC<Props> = (p) => {
@@ -130,14 +142,18 @@ export const ThumbPasso: React.FC<Props> = (p) => {
   [video, fonteOk, config, previa, icones, recorte, camadas]);
   const temAlvo = daIa(config) && Boolean(config.alvo);
 
+  const [verRecortes, setVerRecortes] = useState(true);
+  const recortes = recortesDe(config.plataformas, previa);
+  // No perfil do TikTok e do Instagram, a capa em pé aparece cortada em 3:4.
+  const doPerfil = recortes.find((r) => Math.abs(r.y1 - r.y0 - 0.75) < 0.01) ?? null;
+
   useEffect(() => {
     if (!config.tamanhos.includes(tamanhoDaPrevia) && config.tamanhos[0]) setTamanhoDaPrevia(config.tamanhos[0]);
   }, [config.tamanhos, tamanhoDaPrevia]);
 
-  const alternarTamanho = (t: string) => {
-    const tem = config.tamanhos.includes(t);
-    const novos = tem ? config.tamanhos.filter((x) => x !== t) : [...config.tamanhos, t];
-    if (novos.length) mudar({tamanhos: novos});
+  const irParaAsPlataformas = () => {
+    const calmo = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    document.getElementById('plataformas')?.scrollIntoView({behavior: calmo ? 'auto' : 'smooth', block: 'center'});
   };
 
   const situacaoDoRecorte = camadas?.personagem ? ''
@@ -151,11 +167,15 @@ export const ThumbPasso: React.FC<Props> = (p) => {
         <span className="numero" aria-hidden="true">5</span>
         <div>
           <h2>Thumbnail</h2>
-          <p>Uma capa à parte, feita com Remotion. A prévia muda enquanto você escolhe.</p>
+          <p>Uma capa à parte, no formato de cada plataforma. A prévia muda enquanto você escolhe.</p>
         </div>
       </header>
+      <p className="para-onde">
+        Para {juntar(config.tamanhos.map((t) => paraQuem(config, t)))}.{' '}
+        <button type="button" className="link" onClick={irParaAsPlataformas}>Trocar as plataformas</button>
+      </p>
       <Interruptor ligado={config.ativo} aoMudar={(v) => mudar({ativo: v})} titulo="Gerar thumbnail"
-        descricao="Sai como PNG e como JPG de até 2 MB (o limite do YouTube), na mesma pasta do vídeo." />
+        descricao="Sai sozinha quando a edição termina, em PNG e em JPG de até 2 MB, na mesma pasta do vídeo." />
       <div className={config.ativo ? '' : 'desligado'} aria-disabled={!config.ativo}>
         {p.painelIa ? <PainelIa {...p.painelIa} /> : null}
         <div className="thumb-area">
@@ -169,25 +189,74 @@ export const ThumbPasso: React.FC<Props> = (p) => {
                     maxHeight: 520}}
                   acknowledgeRemotionLicense />
                 <Arrastar props={props} config={config} mudar={mudar} />
+                {verRecortes ? (
+                  <div className="recortes" aria-hidden="true"
+                    style={{aspectRatio: `${TAMANHOS[previa].largura} / ${TAMANHOS[previa].altura}`}}>
+                    {recortes.map((r) => (
+                      <div key={r.nome} className="recorte" style={{top: `${r.y0 * 100}%`, height: `${(r.y1 - r.y0) * 100}%`}}>
+                        <span>{r.nome}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="vazio">Envie um vídeo para ver a prévia da thumbnail.</div>
             )}
-            {props ? (
-              <div className="no-feed">
-                <div className="miniatura-feed" style={{aspectRatio: `${props.largura} / ${props.altura}`}}>
-                  <Thumb {...props} />
-                </div>
-                <small>Assim ela aparece no feed, com 120 px de largura: a chamada precisa ler daqui.</small>
-              </div>
-            ) : null}
             {config.tamanhos.length > 1 ? (
-              <div className="linha-de-opcoes" style={{marginTop: 8}}>
+              <div className="linha-de-opcoes" style={{marginTop: 8}} role="group" aria-label="prévia de">
                 <small style={{alignSelf: 'center'}}>Prévia de:</small>
                 {config.tamanhos.map((t) => (
                   <button key={t} type="button" className="pilula" aria-pressed={previa === t}
-                    onClick={() => setTamanhoDaPrevia(t)}>{t.replace('x', '×')}</button>
+                    onClick={() => setTamanhoDaPrevia(t)}>{paraQuem(config, t)}</button>
                 ))}
+              </div>
+            ) : null}
+            {recortes.length && props ? (
+              <label className="ver-recortes">
+                <input type="checkbox" checked={verRecortes} onChange={(e) => setVerRecortes(e.target.checked)} />
+                Mostrar onde a plataforma corta a capa (as linhas não saem na imagem)
+              </label>
+            ) : null}
+            {props ? (
+              <div className="no-feed">
+                {doPerfil ? (
+                  <div className="miniatura-feed" style={{aspectRatio: '3 / 4'}}>
+                    <div style={{transform: `translateY(-${doPerfil.y0 * 100}%)`}}>
+                      <Thumb {...props} />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="miniatura-feed" style={{aspectRatio: `${props.largura} / ${props.altura}`}}>
+                    <Thumb {...props} />
+                  </div>
+                )}
+                <small>{doPerfil
+                  ? 'Assim ela aparece no perfil, cortada em 3:4: a chamada e o rosto precisam caber aqui.'
+                  : 'Assim ela aparece no feed, com 120 px de largura: a chamada precisa ler daqui.'}</small>
+              </div>
+            ) : null}
+            {props ? (
+              <div className="baixar-thumb">
+                {config.tamanhos.map((t) => {
+                  const feita = p.baixadas[t];
+                  return (
+                    <div key={t} className="baixar-um">
+                      <button type="button" className="botao" disabled={p.baixando !== null}
+                        onClick={() => p.aoBaixar(t)}>
+                        {p.baixando === t ? 'Preparando…' : `Baixar para ${paraQuem(config, t)} (${t.replace('x', '×')})`}
+                      </button>
+                      {feita ? (
+                        <small>
+                          Baixada: <a href={api.thumbnailUrl(feita.jpg)}>{feita.jpg}</a> ({bytes(feita.jpgBytes)}) ·{' '}
+                          <a href={api.thumbnailUrl(feita.png)}>PNG</a> ·{' '}
+                          <button type="button" className="link" onClick={() => api.abrirPasta()}>Abrir a pasta</button>
+                        </small>
+                      ) : null}
+                    </div>
+                  );
+                })}
+                {p.erro ? <div className="aviso erro">{p.erro}</div> : null}
               </div>
             ) : null}
           </div>
@@ -277,15 +346,6 @@ export const ThumbPasso: React.FC<Props> = (p) => {
                             {icones[n].map((d, i) => <path key={i} d={d} />)}
                           </svg>
                         </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="campo">
-                    <span>Tamanhos</span>
-                    <div className="linha-de-opcoes" role="group" aria-label="tamanhos">
-                      {Object.entries(TAMANHOS).map(([t, info]) => (
-                        <button key={t} type="button" className="pilula" aria-pressed={config.tamanhos.includes(t)}
-                          onClick={() => alternarTamanho(t)} title={info.nome}>{info.nome}</button>
                       ))}
                     </div>
                   </div>

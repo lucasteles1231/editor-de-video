@@ -4,6 +4,7 @@
 import React, {useRef, useState} from 'react';
 import {api} from '../api';
 import {falaEfetiva, opcoesDeFala, semSom} from '../fala';
+import {ORDEM, PLATAFORMAS, type Plataforma, juntar} from '../plataformas';
 import {bytes, duracao, numero} from '../formatar';
 import type {
   AudioInfo, Edicao, Estado, Fala, FormatoDoQuadro, Modo, MontagemConfig, PersonagemInfo, PorCima, Preset, Saida,
@@ -93,6 +94,11 @@ export type PropsDoEnvio = {
   aoEscolher: (qual: Envio, arquivo: File) => void;
   aoTirarAudio: () => void;
   recorte: {baixado: boolean; tamanho: string};
+  /** Onde o vídeo vai ser postado, as recomendadas pelo formato dele e os avisos. */
+  plataformas: Plataforma[];
+  recomendadas: Plataforma[];
+  aoAlternarPlataforma: (p: Plataforma) => void;
+  avisosDaPlataforma: string[];
 };
 
 const Aviso: React.FC<{texto: string}> = ({texto}) => (texto ? <div className="aviso erro">{texto}</div> : null);
@@ -221,6 +227,34 @@ const EnvioDaMontagem: React.FC<PropsDoEnvio> = (p) => {
   );
 };
 
+/** Onde o vídeo vai ser postado: decide o formato da thumbnail e, na montagem, o do vídeo. */
+const OndePostar: React.FC<PropsDoEnvio> = (p) => {
+  const emPe = p.recomendadas.length > 0 && !p.recomendadas.includes('youtube');
+  return (
+    <div className="plataformas" id="plataformas">
+      <strong>Onde você vai postar?</strong>
+      <div className="linha-de-opcoes" role="group" aria-label="onde você vai postar">
+        {ORDEM.map((pl) => (
+          <button key={pl} type="button" className="pilula" aria-pressed={p.plataformas.includes(pl)}
+            onClick={() => p.aoAlternarPlataforma(pl)}>
+            {PLATAFORMAS[pl].nome}
+            {p.recomendadas.includes(pl) ? <>{' '}<span className="recomendado">recomendado</span></> : null}
+          </button>
+        ))}
+      </div>
+      <small>
+        {p.recomendadas.length
+          ? `Para um vídeo ${emPe ? 'em pé' : 'deitado'}, o editor recomenda ${juntar(p.recomendadas.map((x) => PLATAFORMAS[x].nome))}. `
+          : 'Envie o vídeo, e o editor recomenda pelo formato dele. '}
+        Dá para marcar várias: a thumbnail sai no formato de cada uma{p.modo === 'montagem'
+          ? ', e o vídeo montado também' : ''}.
+      </small>
+      {p.plataformas.includes('shorts') ? <small>{PLATAFORMAS.shorts.nota}</small> : null}
+      {p.avisosDaPlataforma.map((a) => <div key={a} className="aviso">{a}</div>)}
+    </div>
+  );
+};
+
 export const PassoEnvio: React.FC<PropsDoEnvio> = (p) => (
   <section className="passo" id="passo-envio">
     <Cabeca n={1} titulo="Envie o vídeo"
@@ -242,6 +276,7 @@ export const PassoEnvio: React.FC<PropsDoEnvio> = (p) => (
     ) : (
       <EnvioDaMontagem {...p} />
     )}
+    <OndePostar {...p} />
   </section>
 );
 

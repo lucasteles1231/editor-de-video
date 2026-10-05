@@ -118,7 +118,8 @@ def argumentos() -> argparse.ArgumentParser:
                         "som; senão o fundo)")
     m.add_argument("--recorte", choices=["modnet", "transparente"],
                    help="como tirar o fundo da pessoa (padrão: o alfa do arquivo, se houver)")
-    m.add_argument("--quadro", choices=["fundo", "vertical", "horizontal", "quadrado"],
+    m.add_argument("--quadro", default="fundo",
+                   choices=["fundo", "vertical", "horizontal", "quadrado"],
                    help="o formato do vídeo final (padrão: o do fundo)")
     m.add_argument("--parada", dest="mover", action="store_const", const=False,
                    help="a pessoa ou o personagem não muda de lugar")
@@ -199,7 +200,7 @@ def main(argv: list[str] | None = None) -> int:
         return abrir(porta=a.porta, navegador=not a.sem_navegador)
 
     preset = presets.PRESETS[a.preset or "padrao"]
-    montagem, erro = _montagem(a, preset)
+    montagem, erro = _montagem(a)
     if erro:
         print(erro, file=sys.stderr)
         return 2
@@ -237,7 +238,7 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _montagem(a: argparse.Namespace, preset: presets.Preset):
+def _montagem(a: argparse.Namespace):
     """A montagem pedida nas flags (ou ``None`` sem ``--fundo``), e o erro, se houver.
 
     ``editar eu.mp4 --fundo tela.mp4`` também vale: com ``--fundo`` e sem ``--pessoa`` nem
@@ -267,7 +268,7 @@ def _montagem(a: argparse.Namespace, preset: presets.Preset):
     if pessoa is not None and recorte is None:
         recorte = "transparente" if video_mod.tem_alfa(pessoa) else "modnet"
     return Montagem(a.fundo, pessoa=pessoa, personagem=a.personagem, audio=a.audio,
-                    recorte=recorte or "modnet", formato=a.quadro or preset.quadro,
+                    recorte=recorte or "modnet", formato=a.quadro,
                     tirar_fundo_do_personagem=not a.manter_fundo_do_personagem,
                     fala=a.fala), ""
 

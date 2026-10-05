@@ -403,6 +403,59 @@ button.preset:hover { border-color: var(--linha); }
 .preset.personalizado { border-style: dashed; }
 .preset.personalizado.marcado { border-style: solid; background: color-mix(in srgb, var(--rosa) 18%, var(--papel)); }
 
+/* ── onde vai postar (passo 1) ── */
+.plataformas {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 2px dashed color-mix(in srgb, var(--linha) 18%, transparent);
+}
+.plataformas > strong { font-family: var(--titulo); font-size: 16px; }
+.plataformas > small { color: var(--tinta-suave); }
+.plataformas .aviso { margin-top: 0; }
+.recomendado {
+  margin-left: 7px;
+  padding: 1px 6px;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+
+/* ── a thumbnail: para onde ela vai, os recortes e o baixar ── */
+.para-onde { margin: 0 0 12px; font-size: 14px; color: var(--tinta-suave); }
+/* Do tamanho da capa, que o Player centraliza (em pé, sobra preto dos lados). */
+.recortes { position: absolute; top: 0; bottom: 0; left: 50%; transform: translateX(-50%); pointer-events: none; }
+.recorte {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 2px dashed rgb(255 255 255 / 85%);
+  border-bottom: 2px dashed rgb(255 255 255 / 85%);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 35%);
+}
+.recorte span {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgb(0 0 0 / 60%);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+}
+/* Dois recortes (o 3:4 e o 4:5 do Instagram) quase coincidem: o nome do segundo vai embaixo. */
+.recorte:nth-child(even) span { top: auto; bottom: 4px; left: auto; right: 6px; }
+.ver-recortes { display: flex; gap: 8px; align-items: center; margin-top: 8px; font-size: 12.5px; color: var(--tinta-suave); }
+.baixar-thumb { display: grid; gap: 10px; margin-top: 14px; }
+.baixar-um { display: grid; gap: 4px; justify-items: start; }
+.baixar-um small { color: var(--tinta-suave); font-size: 12.5px; overflow-wrap: anywhere; }
+
 /* ── os sons ── */
 .sons {
   margin-top: 18px;

@@ -451,3 +451,51 @@ class TestPresetsESons:
         plano = cliente.get(f"/api/tarefas/{t['id']}/arquivo/plano?inline=1", headers=CABECA).json()
         assert plano["forca_do_empurrao"] == p.edicao["empurrao"]
         assert all(len(b["texto"]) <= 14 for b in plano["blocos"])
+
+
+class TestBaixarAThumbnail:
+    """O botão "Baixar" do passo 5: salva na pasta e entrega como download, antes ou
+    depois de editar."""
+
+    def _png(self, largura=1080, altura=1920):
+        corpo = io.BytesIO()
+        Image.new("RGB", (largura, altura), (0, 194, 255)).save(corpo, "PNG")
+        return corpo.getvalue()
+
+    def test_antes_de_editar_leva_o_nome_do_video(self, cliente, tmp_path):
+        v = _enviar(cliente, fazer_video(tmp_path / "x.mp4"), nome="minha aula.mp4")
+        r = cliente.post("/api/thumbnails", headers=CABECA,
+                         data={"tamanho": "1080x1920", "video_id": v["id"]},
+                         files={"imagem": ("t.png", self._png())})
+        assert r.status_code == 200, r.text
+        assert r.json()["jpg"] == "minha aula-thumb-1080x1920.jpg"
+        assert r.json()["jpg_bytes"] <= servidor.JPG_MAXIMO
+        assert (tmp_path / "saida" / "minha aula-thumb-1080x1920.png").is_file()
+        baixada = cliente.get(f"/api/thumbnails/{r.json()['jpg']}", headers=CABECA)
+        assert baixada.status_code == 200 and "attachment" in baixada.headers["content-disposition"]
+        assert Image.open(io.BytesIO(baixada.content)).size == (1080, 1920)
+
+    def test_depois_de_editar_leva_o_nome_do_editado(self, cliente, tmp_path):
+        v = _enviar(cliente, fazer_video(tmp_path / "x.mp4", segundos=2.0))
+        tid = cliente.post("/api/tarefas", headers=CABECA, json={"video_id": v["id"]}).json()["id"]
+        assert _esperar(cliente, tid)["estado"] == "pronto"
+        r = cliente.post("/api/thumbnails", headers=CABECA,
+                         data={"tamanho": "1280x720", "video_id": v["id"], "tarefa_id": tid},
+                         files={"imagem": ("t.png", self._png(1280, 720))})
+        assert r.status_code == 200, r.text
+        assert r.json()["png"] == "x-editado-thumb-1280x720.png"
+        t = cliente.get(f"/api/tarefas/{tid}", headers=CABECA).json()
+        assert any(c.endswith("x-editado-thumb-1280x720.jpg") for c in t["resultado"]["thumbnails"])
+
+    def test_o_que_nao_vale(self, cliente, tmp_path):
+        v = _enviar(cliente, fazer_video(tmp_path / "x.mp4"))
+        r = cliente.post("/api/thumbnails", headers=CABECA,
+                         data={"tamanho": "../../fora", "video_id": v["id"]},
+                         files={"imagem": ("t.png", self._png())})
+        assert r.status_code == 422
+        r = cliente.post("/api/thumbnails", headers=CABECA,
+                         data={"tamanho": "1080x1920", "video_id": v["id"]},
+                         files={"imagem": ("t.png", b"nao sou imagem")})
+        assert r.status_code == 422
+        assert cliente.get("/api/thumbnails/outra.jpg", headers=CABECA).status_code == 404
+        assert cliente.get("/api/thumbnails/..%2F..%2Fsegredo", headers=CABECA).status_code == 404

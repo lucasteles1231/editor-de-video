@@ -1,6 +1,9 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {api} from './api';
 import {falaEfetiva} from './fala';
+import {
+  ORDEM, type Plataforma, avisos, quadroDe, recomendadas, tamanhosDe,
+} from './plataformas';
 import {aplicarPreset, presetMarcado} from './presets';
 import {Painel} from './componentes/Painel';
 import {type Envio, PassoEdicoes, PassoEnvio, PassoLegenda, PassoSaida} from './componentes/Passos';
@@ -25,8 +28,18 @@ const THUMB_PADRAO: ThumbConfig = {
   vinheta: false, tom: false, recorte: true, lado: 'esquerda', pessoaDx: 0, pessoaDy: 0, pessoaEscala: 1,
   espelhar: false, contorno: true, luz: 'nenhuma', realce: true, mao: 'nenhuma', maoEstilo: '3d',
   maoTom: 'default', maoX: null, maoY: null, maoEscala: 1, seta: false, alvo: null, rosto: null,
-  rostoT: null, busca: '', cena: '', tamanhos: ['1280x720'],
+  rostoT: null, busca: '', cena: '', plataformas: ['youtube'], tamanhos: ['1280x720'],
 };
+
+/** Baixa um arquivo que o servidor entrega como anexo, sem sair da página. */
+function baixarArquivo(url: string): void {
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
 
 /** Uma ideia do Gemini vira a ficha dos controles: dali em diante tudo é editável. A
  *  posição volta ao automático, e o fundo de banco ou gerado espera a imagem chegar (até
@@ -104,6 +117,12 @@ export const App: React.FC = () => {
   const [pexels, setPexels] = useState<EstadoChave>({configurada: false, origem: '', final: ''});
   const [geracao, setGeracao] = useState({restantes: 0, teto: 0});
   const [gerando, setGerando] = useState<number | null>(null);
+  // Onde o vídeo vai ser postado: ``null`` enquanto a pessoa não escolhe (vale a
+  // recomendação pelo formato do vídeo).
+  const [plataformasEscolhidas, setPlataformasEscolhidas] = useState<Plataforma[] | null>(null);
+  const [baixando, setBaixando] = useState<string | null>(null);
+  const [baixadas, setBaixadas] = useState<Record<string, {png: string; jpg: string; jpgBytes: number}>>({});
+  const [erroThumb, setErroThumb] = useState('');
   // O vídeo da thumbnail: o único; na montagem, o da pessoa (com personagem, o do fundo,
   // de onde saem os quadros de trás dele).
   const naMontagem = modo === 'montagem';
@@ -115,6 +134,11 @@ export const App: React.FC = () => {
       ? {info: personagem, recorte: recorteDoPersonagem, tirarFundo: montagem.tirarFundo} : null,
   }), [naMontagem, comPersonagem, fundo, personagem, recorteDoPersonagem, montagem.tirarFundo]);
   const fala = falaEfetiva(montagem, fundo, pessoa, audio);
+  // A recomendação sai do vídeo principal: o único, ou o fundo da montagem.
+  const videoPrincipal = naMontagem ? fundo : unico;
+  const recomendacao = useMemo(() => recomendadas(videoPrincipal), [videoPrincipal]);
+  const plataformas: Plataforma[] = plataformasEscolhidas ?? (recomendacao.length ? recomendacao : ['youtube']);
+  const chaveDasPlataformas = plataformas.join(',');
   const podeEditar = !naMontagem ? Boolean(unico)
     : Boolean(fundo && (comPersonagem ? personagem : pessoa) && (fala !== 'audio' || audio));
   const pararDeAcompanhar = useRef<(() => void) | null>(null);
@@ -137,6 +161,22 @@ export const App: React.FC = () => {
       .catch(() => setRecortes((r) => ({...r, [chave]: {ok: false, pessoa: null, rosto: null}})));
   }, []);
   const recorteDe = (v: VideoInfo | null, t: number) => (v ? recortes[`${v.id}:${chaveDoRecorte(t)}`] : undefined);
+
+  // As plataformas decidem os tamanhos da thumbnail e, na montagem, o quadro (com
+  // plataformas deitadas e em pé misturadas, fica o do passo 4).
+  useEffect(() => {
+    const lista = chaveDasPlataformas.split(',') as Plataforma[];
+    setThumb((t) => (t.plataformas.join(',') === chaveDasPlataformas ? t
+      : {...t, plataformas: lista, tamanhos: tamanhosDe(lista)}));
+    const quadro = naMontagem ? quadroDe(lista) : null;
+    if (quadro) setMontagem((m) => (m.formato === quadro ? m : {...m, formato: quadro}));
+  }, [chaveDasPlataformas, naMontagem]);
+
+  const alternarPlataforma = (pl: Plataforma) => {
+    const nova = plataformas.includes(pl) ? plataformas.filter((x) => x !== pl)
+      : ORDEM.filter((x) => x === pl || plataformas.includes(x));
+    if (nova.length) setPlataformasEscolhidas(nova);
+  };
 
   // O recorte do quadro da prévia: espera o controle deslizante parar.
   useEffect(() => {
@@ -284,7 +324,7 @@ export const App: React.FC = () => {
     setPensando(true);
     setErroIa('');
     try {
-      const r = await api.ideias(tarefaId, evitar);
+      const r = await api.ideias(tarefaId, evitar, thumbAtual.current.plataformas);
       const variantes = pexelsAtual.current.configurada ? await fotosDoBanco(r.variantes) : r.variantes;
       setIdeias(variantes);
       setEscolhida(-1);
@@ -354,16 +394,38 @@ export const App: React.FC = () => {
     [estado, edicao, saida]);
   const escolherPreset = (p: Preset) => {
     if (!edicao || !saida) return;
-    const tela = aplicarPreset(p, {edicao, saida, montagem, thumb});
+    const tela = aplicarPreset(p, {edicao, saida, thumb});
     setEdicao(tela.edicao);
     setSaida(tela.saida);
-    setMontagem(tela.montagem);
     setThumb(tela.thumb);
   };
 
-  const regerar = () => {
-    if (tarefa?.estado === 'pronto' && video) void gerarThumbs(tarefa.id, video, thumb, camadas);
-  };
+  /** O botão "Baixar" do passo 5: desenha a thumbnail como está na tela, salva na pasta e
+   *  baixa o JPG. Depois da edição, ela leva o nome do vídeo editado e entra no resultado. */
+  const baixarThumb = useCallback(async (tamanho: string) => {
+    if (!video || !videoPrincipal) return;
+    setBaixando(tamanho);
+    setErroThumb('');
+    try {
+      const recorte = thumb.recorte && !camadas?.personagem
+        ? recorteDe(video, thumb.t) ?? await api.recorteInfo(video.id, thumb.t).catch(() => null) : null;
+      const blob = await gerarPng(propsDaThumb(thumb, video, tamanho, icones, recorte, camadas));
+      const pronta = tarefa?.estado === 'pronto' ? tarefa.id : '';
+      const r = await api.salvarThumbnailDoPasso(blob, tamanho, videoPrincipal.id, pronta);
+      baixarArquivo(api.thumbnailUrl(r.jpg));
+      setBaixadas((b) => ({...b, [tamanho]: {png: r.png, jpg: r.jpg, jpgBytes: r.jpg_bytes}}));
+      if (pronta) {
+        // O mesmo nome de arquivo, com outra imagem: o "v" fura o cache do navegador.
+        const nova = {nome: r.png, url: `${api.arquivoUrl(pronta, r.png, true)}&v=${Date.now()}`, jpgBytes: r.jpg_bytes};
+        setThumbs((ts) => [...ts.filter((x) => x.nome !== r.png), nova]);
+      }
+    } catch (e) {
+      setErroThumb(`A thumbnail não saiu: ${(e as Error).message}`);
+    } finally {
+      setBaixando(null);
+    }
+  // ``recortes`` entra por causa do recorteDe, que lê dele.
+  }, [video, videoPrincipal, thumb, camadas, icones, tarefa, recortes]);
 
   const painelIa = ia ? {
     ia, usar: usarIa, setUsar: setUsarIa,
@@ -381,13 +443,13 @@ export const App: React.FC = () => {
       if (!video || !fonteOk) return null;
       const config = aplicarIdeia(thumb, ideia);
       if (camadas?.personagem) {
-        return camadas.personagem.recorte ? propsDaThumb(config, video, '1280x720', icones, null, camadas) : null;
+        return camadas.personagem.recorte ? propsDaThumb(config, video, config.tamanhos[0], icones, null, camadas) : null;
       }
       const recorte = recorteDe(video, ideia.t);
       // Enquanto o recorte da ideia não chega, o cartão espera. Desenhar o quadro inteiro e
       // trocar pela pessoa recortada um instante depois parecia defeito.
       if (config.recorte && !recorte) return null;
-      return propsDaThumb(config, video, '1280x720', icones, recorte ?? null, camadas);
+      return propsDaThumb(config, video, config.tamanhos[0], icones, recorte ?? null, camadas);
     },
     gerando,
     pexelsConfigurado: pexels.configurada,
@@ -445,7 +507,9 @@ export const App: React.FC = () => {
           <PassoEnvio modo={modo} setModo={trocarModo} video={unico} fundo={fundo} pessoa={pessoa}
             personagem={personagem} audio={audio} montagem={montagem} mudarMontagem={mudarMontagem}
             progresso={envios} erro={errosDeEnvio} aoEscolher={escolherArquivo} aoTirarAudio={() => setAudio(null)}
-            recorte={estado?.recorte ?? {baixado: true, tamanho: ''}} />
+            recorte={estado?.recorte ?? {baixado: true, tamanho: ''}}
+            plataformas={plataformas} recomendadas={recomendacao} aoAlternarPlataforma={alternarPlataforma}
+            avisosDaPlataforma={avisos(plataformas, videoPrincipal, naMontagem)} />
           {estado && edicao && saida ? (
             <>
               <PassoEdicoes edicao={edicao} mudar={(p) => setEdicao({...edicao, ...p})}
@@ -459,12 +523,8 @@ export const App: React.FC = () => {
               <ThumbPasso video={video} config={thumb} mudar={(p) => setThumb((t) => ({...t, ...p}))}
                 icones={icones} fonteOk={fonteOk} recorte={recorteDe(video, thumb.t)} camadas={camadas}
                 tamanhoDoRecorte={estado.recorte.tamanho} painelIa={painelIa}
-                pexels={pexels} setPexels={setPexels} geracao={geracao} setGeracao={setGeracao} />
-              {tarefa?.estado === 'pronto' && thumb.ativo ? (
-                <button type="button" className="botao" onClick={regerar} disabled={gerandoThumbs}>
-                  {gerandoThumbs ? 'Gerando…' : 'Gerar as thumbnails de novo'}
-                </button>
-              ) : null}
+                pexels={pexels} setPexels={setPexels} geracao={geracao} setGeracao={setGeracao}
+                aoBaixar={baixarThumb} baixando={baixando} baixadas={baixadas} erro={erroThumb} />
             </>
           ) : null}
         </div>

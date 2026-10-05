@@ -659,28 +659,69 @@ def criar_app(token: str, *, porta: int, pasta_saida: Path | None = None,
             return FileResponse(caminho)
         return FileResponse(caminho, filename=caminho.name)
 
-    @app.post("/api/tarefas/{tid}/thumbnail")
-    def salvar_thumbnail(tid: str, imagem: Annotated[UploadFile, File()],
-                         nome: Annotated[str, Form()]):
-        t = _tarefa(tid)
-        if t.estado != "pronto" or not t.resultado:
-            raise HTTPException(409, "a edição ainda não terminou")
-        if not re.fullmatch(r"[0-9]{2,4}x[0-9]{2,4}", nome):
+    # ── as thumbnails ─────────────────────────────────────────────────────
+    # Salvas na pasta de saída, em PNG e em JPG de até 2 MB. Só as salvas nesta sessão
+    # podem ser baixadas pela página.
+    thumbnails: dict[str, Path] = {}
+
+    def _gravar_thumbnail(imagem: UploadFile, base: Path, tamanho: str) -> dict:
+        """``<base>-thumb-<tamanho>.png`` e ``.jpg``, ao lado de ``base``."""
+        if not re.fullmatch(r"[0-9]{2,4}x[0-9]{2,4}", tamanho):
             raise HTTPException(422, "nome da thumbnail inválido")
-        img = Image.open(imagem.file).convert("RGB")
-        base = Path(t.resultado["video"])
-        png = base.with_name(f"{base.stem}-thumb-{nome}.png")
+        try:
+            img = Image.open(imagem.file).convert("RGB")
+        except (OSError, ValueError) as erro:
+            raise HTTPException(422, "a thumbnail não é uma imagem") from erro
+        png = base.with_name(f"{base.stem}-thumb-{tamanho}.png")
+        png.parent.mkdir(parents=True, exist_ok=True)
         img.save(png, "PNG", optimize=True)
         jpg = png.with_suffix(".jpg")
         for qualidade in (92, 85, 78, 70, 60):
             img.save(jpg, "JPEG", quality=qualidade, optimize=True)
             if jpg.stat().st_size <= JPG_MAXIMO:
                 break
-        t.resultado.setdefault("thumbnails", [])
-        for c in (str(png), str(jpg)):
-            if c not in t.resultado["thumbnails"]:
-                t.resultado["thumbnails"].append(c)
+        for c in (png, jpg):
+            thumbnails[c.name] = c
         return {"png": png.name, "jpg": jpg.name, "jpg_bytes": jpg.stat().st_size}
+
+    def _no_resultado(t: Tarefa, gravada: dict) -> None:
+        lista = t.resultado.setdefault("thumbnails", [])
+        for nome in (gravada["png"], gravada["jpg"]):
+            caminho = str(thumbnails[nome])
+            if caminho not in lista:
+                lista.append(caminho)
+
+    @app.post("/api/tarefas/{tid}/thumbnail")
+    def salvar_thumbnail(tid: str, imagem: Annotated[UploadFile, File()],
+                         nome: Annotated[str, Form()]):
+        t = _tarefa(tid)
+        if t.estado != "pronto" or not t.resultado:
+            raise HTTPException(409, "a edição ainda não terminou")
+        gravada = _gravar_thumbnail(imagem, Path(t.resultado["video"]), nome)
+        _no_resultado(t, gravada)
+        return gravada
+
+    @app.post("/api/thumbnails")
+    def salvar_thumbnail_do_passo(imagem: Annotated[UploadFile, File()],
+                                  tamanho: Annotated[str, Form()],
+                                  video_id: Annotated[str, Form()],
+                                  tarefa_id: Annotated[str, Form()] = ""):
+        """O botão "Baixar" do passo 5. Depois da edição, a thumbnail leva o nome do vídeo
+        editado e entra no resultado; antes, leva o nome do vídeo enviado."""
+        t = gerente.tarefas.get(tarefa_id) if tarefa_id else None
+        if t is not None and t.estado == "pronto" and t.resultado:
+            gravada = _gravar_thumbnail(imagem, Path(t.resultado["video"]), tamanho)
+            _no_resultado(t, gravada)
+            return gravada
+        v = _video(video_id)
+        return _gravar_thumbnail(imagem, saida_base / Path(v["nome"]).name, tamanho)
+
+    @app.get("/api/thumbnails/{nome}")
+    def baixar_thumbnail(nome: str, inline: int = 0):
+        caminho = thumbnails.get(nome)
+        if caminho is None or not caminho.is_file():
+            raise HTTPException(404, "thumbnail não encontrada")
+        return FileResponse(caminho) if inline else FileResponse(caminho, filename=caminho.name)
 
     # ── as ideias do Gemini ───────────────────────────────────────────────
 
@@ -690,6 +731,8 @@ def criar_app(token: str, *, porta: int, pasta_saida: Path | None = None,
         if t.estado != "pronto" or not t.resultado:
             raise HTTPException(409, "a edição ainda não terminou")
         evitar = [str(c)[:60] for c in (dados or {}).get("evitar", [])][:12]
+        plataformas = [str(x) for x in (dados or {}).get("plataformas", [])
+                       if str(x) in ia.PLATAFORMAS]
         m = t.montagem
         origens = None
         if m is None:
@@ -714,7 +757,7 @@ def criar_app(token: str, *, porta: int, pasta_saida: Path | None = None,
             return ia.sugerir(fala_do_plano(Path(t.resultado["plano"])), quadros,
                               idioma=t.edicao.idioma, duracao=duracao,
                               vertical=vertical, nomes_de_icones=icones.nomes(),
-                              evitar=evitar, origens=origens)
+                              evitar=evitar, origens=origens, plataformas=plataformas)
         except ia.ErroDaIA as erro:
             raise HTTPException(502, str(erro)) from erro
 

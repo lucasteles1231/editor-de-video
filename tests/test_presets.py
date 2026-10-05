@@ -6,13 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from editor import cli, montagem, presets, render
+from editor import cli, presets, render
 from editor import saida as saida_mod
 from editor.opcoes import OpcoesDeEdicao
 
 MODELOS_DE_THUMB = {"classico", "numero", "pergunta", "alerta"}
 CORES = {"amarelo", "rosa", "ciano", "lima", "laranja", "roxo", "vermelho"}
-TAMANHOS = {"1280x720", "1080x1920", "1080x1080"}
 
 
 class TestOsValores:
@@ -23,9 +22,9 @@ class TestOsValores:
         assert set(p.edicao) == set(presets.EDICAO) and set(p.saida) == set(presets.SAIDA)
         assert p.saida["resolucao"] in saida_mod.RESOLUCOES and p.saida["fps"] in saida_mod.FPS
         assert p.saida["qualidade"] in saida_mod.QUALIDADES
-        assert p.quadro in montagem.FORMATOS
+        # O formato (o quadro da montagem e o tamanho da thumbnail) vem da plataforma.
+        assert set(p.thumb) == {"modelo", "cor"}
         assert p.thumb["modelo"] in MODELOS_DE_THUMB and p.thumb["cor"] in CORES
-        assert p.thumb["tamanhos"] and set(p.thumb["tamanhos"]) <= TAMANHOS
         assert p.titulo and p.frase
 
     def test_o_padrao_e_o_de_sempre(self):
@@ -108,7 +107,8 @@ class TestNoTerminal:
         assert "faltou o vídeo" in capsys.readouterr().err
 
 
-def test_o_quadro_do_preset_vale_na_montagem(monkeypatch, tmp_path):
+def test_o_preset_nao_muda_o_formato_da_montagem(monkeypatch, tmp_path):
+    """O formato vem da plataforma (na página) ou do --quadro: o preset só muda o estilo."""
     visto = {}
 
     def falso(entrada, destino, edicao, saida, **kw):
@@ -122,7 +122,7 @@ def test_o_quadro_do_preset_vale_na_montagem(monkeypatch, tmp_path):
     monkeypatch.setattr("editor.video.tem_alfa", lambda c: True)
     with pytest.raises(SystemExit):
         cli.main([str(eu), "--fundo", str(fundo), "--preset", "aula"])
-    assert visto["montagem"].formato == "horizontal"
+    assert visto["montagem"].formato == "fundo"
     with pytest.raises(SystemExit):
-        cli.main([str(eu), "--fundo", str(fundo), "--preset", "aula", "--quadro", "quadrado"])
-    assert visto["montagem"].formato == "quadrado"
+        cli.main([str(eu), "--fundo", str(fundo), "--preset", "aula", "--quadro", "vertical"])
+    assert visto["montagem"].formato == "vertical"

@@ -65,6 +65,17 @@ TETO_DA_FALA = 15_000
 #: O orçamento de saída: três fichas gastam uns 700 tokens.
 TOKENS_DE_SAIDA = 4096
 
+#: Onde o vídeo vai ser postado, como o pedido descreve cada plataforma (a página escolhe
+#: no passo 1). As capas em pé são cortadas: o perfil do TikTok e do Instagram mostra o
+#: meio em 3:4, e a busca do YouTube mostra o meio da capa do Short em 3:2.
+PLATAFORMAS = {
+    "youtube": "YouTube (vídeo deitado; a thumbnail é 16:9 e aparece inteira)",
+    "shorts": "YouTube Shorts (capa em pé, 9:16; na busca e no início, só o meio dela aparece)",
+    "tiktok": "TikTok (capa em pé, 9:16; o perfil mostra só o meio dela)",
+    "reels": "Instagram Reels (capa em pé, 9:16; o perfil e o feed mostram só o meio dela)",
+}
+EM_PE = frozenset({"shorts", "tiktok", "reels"})
+
 #: A chamada, com as regras do Stickman (``stickman/titulo.py``): ela é lida num quadro
 #: de 120 px de largura, ao lado de outros vídeos.
 CHAMADA_PALAVRAS = (2, 5)
@@ -485,7 +496,8 @@ def _sobre_as_camadas(origens: Sequence[str] | None) -> str:
 
 def montar_pedido(fala: str, tempos: Sequence[float], *, idioma: str, duracao: float,
                   vertical: bool, nomes_de_icones: Sequence[str],
-                  evitar: Sequence[str] = (), origens: Sequence[str] | None = None) -> str:
+                  evitar: Sequence[str] = (), origens: Sequence[str] | None = None,
+                  plataformas: Sequence[str] = ()) -> str:
     lingua = IDIOMAS.get(idioma, idioma or "o idioma da fala")
     nomes_da_origem = {"pessoa": " (da pessoa)", "fundo": " (do fundo)"}
     quadros = "\n".join(
@@ -497,7 +509,11 @@ def montar_pedido(fala: str, tempos: Sequence[float], *, idioma: str, duracao: f
     minimo, maximo = CHAMADA_PALAVRAS
     repetir = ("\nJá foram sugeridas estas chamadas; traga ideias diferentes delas:\n"
                + "\n".join(f"- {c}" for c in evitar)) if evitar else ""
-    return f"""O VÍDEO: {duracao:.0f} segundos, {"vertical" if vertical else "horizontal"}.
+    onde = [PLATAFORMAS[x] for x in plataformas if x in PLATAFORMAS]
+    postado = ("\nONDE VAI SER POSTADO: " + "; ".join(onde) + "." if onde else "") + (
+        "\nA capa em pé é cortada em cima e embaixo: a chamada precisa ser curta e funcionar "
+        "no meio da imagem." if EM_PE & set(plataformas) else "")
+    return f"""O VÍDEO: {duracao:.0f} segundos, {"vertical" if vertical else "horizontal"}.{postado}
 As {len(tempos)} imagens acima são quadros dele, em ordem:
 {quadros}
 {_sobre_as_camadas(origens)}
@@ -714,7 +730,7 @@ def _falsas() -> list[dict]:
 def sugerir(fala: str, quadros: Sequence[tuple[float, bytes]], *, idioma: str,
             duracao: float, vertical: bool, nomes_de_icones: Sequence[str],
             evitar: Sequence[str] = (), transporte=None,
-            origens: Sequence[str] | None = None) -> dict:
+            origens: Sequence[str] | None = None, plataformas: Sequence[str] = ()) -> dict:
     """As ideias de thumbnail para um vídeo.
 
     ``quadros`` são ``(instante, jpeg)``. Devolve ``{"variantes": [...], "modelo": ...,
@@ -738,7 +754,8 @@ def sugerir(fala: str, quadros: Sequence[tuple[float, bytes]], *, idioma: str,
     nomes = set(nomes_de_icones)
     formato = esquema(sorted(nomes))
     pedido = montar_pedido(fala, tempos, idioma=idioma, duracao=duracao, vertical=vertical,
-                           nomes_de_icones=sorted(nomes), evitar=evitar, origens=origens)
+                           nomes_de_icones=sorted(nomes), evitar=evitar, origens=origens,
+                           plataformas=plataformas)
     imagens = [b for _, b in quadros]
     gasto: list[str] = []
     resposta, modelo = _perguntar(valor, SISTEMA, pedido, imagens, formato,

@@ -99,25 +99,28 @@ def test_tour_edicao_e_thumbnail(navegador, endereco, tmp_path):
     chamada = pagina.get_by_label("chamada", exact=False).first
     expect(chamada).to_have_value("Corta as pausas sozinho")
 
+    # O vídeo do teste é em pé: a thumbnail sai no formato de Shorts, TikTok e Reels.
     saida = tmp_path / "saida"
-    pngs = list(saida.glob("*-thumb-1280x720.png"))
+    pngs = list(saida.glob("*-thumb-1080x1920.png"))
     assert len(pngs) == 1 and list(saida.glob("*-editado.mp4"))
     with Image.open(pngs[0]) as im:
-        assert im.size == (1280, 720)
+        assert im.size == (1080, 1920)
         # não é um retângulo vazio: tem o recorte, o contorno branco e a cor de destaque
         cores = im.convert("RGB").getcolors(1_000_000)
         assert len(cores) > 500
         assert any(r > 250 and g > 250 and b > 250 for _, (r, g, b) in cores)
     primeira = pngs[0].read_bytes()
 
-    # escolher outra ideia e gerar de novo troca a thumbnail
+    # Escolher outra ideia e baixar: sai a capa como está na tela, e a da pasta é trocada.
     ideias.nth(2).click()
     expect(ideias.nth(2)).to_have_attribute("aria-pressed", "true")
-    pagina.get_by_role("button", name="Gerar as thumbnails de novo").click()
-    pagina.wait_for_function("document.querySelector('.miniaturas img') !== null")
-    pagina.wait_for_timeout(300)
-    expect(pagina.get_by_role("button", name="Gerar as thumbnails de novo")).to_be_enabled(
-        timeout=60_000)
+    with pagina.expect_download(timeout=60_000) as baixada:
+        pagina.get_by_role("button", name=re.compile("^Baixar para Shorts, TikTok e Reels")).click()
+    jpg = tmp_path / "baixada.jpg"
+    baixada.value.save_as(jpg)
+    with Image.open(jpg) as im:
+        assert im.format == "JPEG" and im.size == (1080, 1920)
+    assert jpg.stat().st_size <= 2 * 1024 * 1024
     assert pngs[0].read_bytes() != primeira
 
     # A primeira ideia (falsa) traz a mão apontando: ela está na prévia.
@@ -130,7 +133,8 @@ def test_tour_edicao_e_thumbnail(navegador, endereco, tmp_path):
     # Chromium entrega, o que escondia o erro do teste).
     previa.scroll_into_view_if_needed()
     caixa = previa.bounding_box()
-    x0, y0 = caixa["x"] + caixa["width"] * 0.8, caixa["y"] + caixa["height"] * 0.75
+    # Em pé (o vídeo do teste), a pessoa fica no meio, embaixo da chamada.
+    x0, y0 = caixa["x"] + caixa["width"] * 0.5, caixa["y"] + caixa["height"] * 0.75
     pagina.mouse.move(x0, y0)
     pagina.mouse.down()
     pagina.mouse.move(x0 - caixa["width"] * 0.2, y0, steps=6)
@@ -194,9 +198,15 @@ def test_montagem_com_personagem_e_narracao(navegador, endereco, tmp_path):
     audio_vem_de.get_by_role("button", name="Um áudio separado").click()
     pagina.set_input_files('[data-envio="audio"] input', str(audio_wav(tmp_path / "n.wav")))
     expect(pagina.get_by_label("dados do áudio separado")).to_contain_text("n.wav")
-    # a montagem tem o "Mover o personagem" e o formato do quadro
+    # a montagem tem o "Mover o personagem"; o fundo é deitado, e o editor recomenda o
+    # YouTube. Trocar para o TikTok põe o quadro em pé (o passo 4 acompanha).
     expect(pagina.locator("label.interruptor", has_text="Mover o personagem")).to_have_count(1)
-    pagina.get_by_role("button", name="Em pé (9:16)").click()
+    onde = pagina.get_by_role("group", name="onde você vai postar")
+    expect(onde.locator('[aria-pressed="true"]')).to_have_text(re.compile("^YouTube recomendado"))
+    onde.get_by_role("button", name=re.compile("^TikTok")).click()
+    onde.get_by_role("button", name=re.compile("^YouTube( recomendado)?$")).click()
+    em_pe = pagina.get_by_role("button", name="Em pé (9:16)")
+    expect(em_pe).to_have_attribute("aria-pressed", "true")
 
     with pagina.expect_request(lambda r: r.url.split("?")[0].endswith("/api/tarefas")
                                and r.method == "POST") as pedido:
@@ -209,7 +219,7 @@ def test_montagem_com_personagem_e_narracao(navegador, endereco, tmp_path):
     saida = tmp_path / "saida"
     editado = next(saida.glob("tela-editado.mp4"))
     assert (ler_info(editado)["largura"], ler_info(editado)["altura"]) == (180, 320)
-    assert list(saida.glob("*-thumb-1280x720.png"))
+    assert list(saida.glob("*-thumb-1080x1920.png"))
     assert not erros, erros
 
 
@@ -262,4 +272,51 @@ def test_presets_e_sons(navegador, endereco, tmp_path):
     pagina.locator(".miniaturas img").first.wait_for(timeout=120_000)
     # o preset de gameplay faz a thumbnail em pé
     assert list((tmp_path / "saida").glob("*-thumb-1080x1920.png"))
+    assert not erros, erros
+
+
+def test_plataformas_e_baixar(navegador, endereco, tmp_path):
+    """A plataforma vem recomendada pelo formato do vídeo, decide o formato da thumbnail e
+    mostra onde a capa é cortada; o "Baixar" entrega a capa antes mesmo de editar."""
+    pagina = navegador.new_page(viewport={"width": 1366, "height": 900})
+    pagina.add_init_script("localStorage.setItem('editor-tour-visto', '1')")
+    erros: list[str] = []
+    pagina.on("pageerror", lambda e: erros.append(str(e)))
+    pagina.on("console", lambda m: m.type == "error" and erros.append(m.text))
+    pagina.goto(endereco)
+
+    pagina.set_input_files("#passo-envio input[type=file]", str(fazer_video(tmp_path / "jogo.mp4")))
+    pagina.locator(".ficha").wait_for(timeout=20_000)
+    onde = pagina.get_by_role("group", name="onde você vai postar")
+    marcadas = onde.locator('[aria-pressed="true"]')
+    expect(marcadas).to_have_count(3)
+    for nome in ("YouTube Shorts", "TikTok", "Instagram Reels"):
+        botao = onde.get_by_role("button", name=re.compile(f"^{nome}"))
+        expect(botao).to_contain_text("recomendado")
+    # a prévia é em pé e mostra os recortes: a busca do YouTube, o perfil e o feed
+    expect(pagina.locator(".recorte")).to_have_count(3)
+    expect(pagina.locator(".recortes")).to_contain_text(
+        "o perfil do TikTok e o perfil do Instagram (3:4)")
+
+    # Marcar o YouTube num vídeo em pé: um aviso, e um segundo formato para baixar.
+    onde.get_by_role("button", name=re.compile("^YouTube recomendado|^YouTube$")).click()
+    expect(pagina.locator(".plataformas .aviso")).to_contain_text("publica este vídeo como Short")
+    expect(pagina.get_by_role("button", name=re.compile("^Baixar para"))).to_have_count(2)
+
+    pagina.get_by_label("Chamada").fill("Teste das plataformas")
+    with pagina.expect_download(timeout=60_000) as baixada:
+        pagina.get_by_role("button", name="Baixar para Shorts, TikTok e Reels (1080×1920)").click()
+    jpg = tmp_path / "capa.jpg"
+    baixada.value.save_as(jpg)
+    with Image.open(jpg) as im:
+        assert im.format == "JPEG" and im.size == (1080, 1920)
+    # antes de editar, leva o nome do vídeo enviado
+    assert (tmp_path / "saida" / "jogo-thumb-1080x1920.png").is_file()
+    expect(pagina.locator(".baixar-um small")).to_contain_text("jogo-thumb-1080x1920.jpg")
+
+    # A última plataforma marcada não desmarca.
+    for nome in ("YouTube", "YouTube Shorts", "TikTok", "Instagram Reels"):
+        onde.get_by_role("button", name=re.compile(f"^{nome}( recomendado)?$")).click()
+    expect(marcadas).to_have_count(1)
+    expect(marcadas).to_have_text(re.compile("^Instagram Reels"))
     assert not erros, erros

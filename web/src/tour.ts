@@ -27,7 +27,7 @@ export function comecarTour(): void {
           side: 'right',
           align: 'start',
           title: '1. Envie o vídeo',
-          description: 'Arraste um vídeo falado (vertical ou horizontal). Ou monte em camadas: um fundo sem pessoa e, por cima, o vídeo da pessoa ou um personagem animado. Tudo é copiado para uma pasta do seu computador — nada vai para a internet.',
+          description: 'Arraste um vídeo falado (vertical ou horizontal). Ou monte em camadas: um fundo sem pessoa e, por cima, o vídeo da pessoa ou um personagem animado. Depois, diga onde vai postar: o editor recomenda pelo formato do vídeo, e a thumbnail sai no formato de cada plataforma. Nada vai para a internet.',
         },
       },
       {
@@ -63,7 +63,7 @@ export function comecarTour(): void {
           side: 'right',
           align: 'start',
           title: '5. Thumbnail',
-          description: 'Uma capa separada, com a pessoa recortada, a chamada e a palavra em destaque. Com uma chave do Gemini (opcional), a IA sugere 3 ideias de acordo com o que você falou. A prévia é ao vivo.',
+          description: 'Uma capa separada, com a pessoa recortada, a chamada e a palavra em destaque, no formato de cada plataforma. Com uma chave do Gemini (opcional), a IA sugere 3 ideias de acordo com o que você falou. A prévia é ao vivo, e o botão Baixar entrega a capa como está.',
         },
       },
       {

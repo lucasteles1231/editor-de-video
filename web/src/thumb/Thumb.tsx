@@ -74,6 +74,12 @@ export type ThumbProps = {
   /** As fontes (URL ou data URL): a da chamada e a do resto. */
   fonteTitulo: string;
   fonteTexto: string;
+  /** A faixa da capa em pé que aparece em todas as plataformas marcadas (frações da
+   *  altura): o perfil do TikTok e do Instagram mostra só o meio em 3:4, e a busca do
+   *  YouTube, o meio da capa do Short em 3:2. A chamada e o selo ficam dentro dela; o
+   *  rosto, dentro de ``rosto`` (a busca do YouTube só exige o texto). Sem ela, a capa
+   *  inteira. */
+  seguro?: {y0: number; y1: number; rosto?: {y0: number; y1: number}};
 };
 
 /** Quanto da largura do quadro da pessoa some aos poucos, num lado em que ela vinha
@@ -108,8 +114,10 @@ function formatoDe(W: number, H: number): Formato {
   return W / H > 1.2 ? 'paisagem' : W / H < 0.8 ? 'retrato' : 'quadrado';
 }
 
-/** Onde vai o texto, onde fica o rosto e onde fica a faixa do alerta, por formato. */
-function planta(W: number, H: number, f: Formato, lado: Lado, faixa: boolean, selo: number) {
+/** Onde vai o texto, onde fica o rosto e onde fica a faixa do alerta, por formato. Em pé,
+ *  tudo fica dentro da faixa ``seguro``. */
+function planta(W: number, H: number, f: Formato, lado: Lado, faixa: boolean, selo: number,
+                seguro: {y0: number; y1: number; rosto?: {y0: number; y1: number}} = {y0: 0, y1: 1}) {
   const m = Math.min(W, H) * 0.055;
   if (f === 'paisagem') {
     const alturaDaFaixa = faixa ? H * 0.17 : selo;
@@ -121,11 +129,24 @@ function planta(W: number, H: number, f: Formato, lado: Lado, faixa: boolean, se
     return {m, texto, rosto, faixa: faixa ? {x: -m, y: m * 0.4, w: W + 2 * m, h: alturaDaFaixa} : null};
   }
   const alturaDaFaixa = faixa ? H * (f === 'retrato' ? 0.09 : 0.13) : selo;
-  const texto = {x: m, y: m + alturaDaFaixa, w: W - 2 * m, h: H * (f === 'retrato' ? 0.33 : 0.36)};
+  const topo = seguro.y0 * H;
+  const fundo = seguro.y1 * H;
+  const fundoDoRosto = (seguro.rosto ?? seguro).y1 * H;
+  const texto = {x: m, y: topo + m + alturaDaFaixa, w: W - 2 * m, h: H * (f === 'retrato' ? 0.33 : 0.36)};
   const rosto: Alvo = f === 'retrato'
     ? {cx: W * 0.5, cy: H * 0.6, altura: H * 0.24}
     : {cx: W * 0.5, cy: H * 0.66, altura: H * 0.3};
-  return {m, texto, rosto, faixa: faixa ? {x: -m, y: m * 0.4, w: W + 2 * m, h: alturaDaFaixa} : null};
+  if (fundo - topo < H * 0.999 || fundoDoRosto < H * 0.999) {
+    // Com recorte, a chamada fica com até 55% do que sobra da faixa dela, e o rosto vem
+    // logo abaixo. A caixa do rosto é a cabeça medida na silhueta, do cabelo até perto
+    // dos olhos: o queixo fica uns 60% dela mais abaixo, e também tem de caber (no teste
+    // com a faixa do alerta, ele encostava no corte do feed do Instagram).
+    texto.h = Math.min(texto.h, (fundo - texto.y) * 0.55);
+    const baseDoTexto = texto.y + texto.h;
+    rosto.altura = Math.max(H * 0.1, Math.min(rosto.altura, (fundoDoRosto - baseDoTexto) / 1.7));
+    rosto.cy = Math.min(Math.max(rosto.cy, baseDoTexto + rosto.altura * 0.55), fundoDoRosto - rosto.altura * 1.1);
+  }
+  return {m, texto, rosto, faixa: faixa ? {x: -m, y: topo + m * 0.4, w: W + 2 * m, h: alturaDaFaixa} : null};
 }
 
 /** O rosto quando ninguém disse onde ele está: o terço de cima, no meio. */
@@ -177,8 +198,10 @@ export function compor(p: ThumbProps) {
   const comRecorte = Boolean(p.recorte && p.pessoa);
   const seloPx = curto * 0.075;
   const selo = p.selo && p.modelo !== 'alerta' ? comoAparece(p.selo) : '';
+  const seguro = f === 'paisagem' ? {y0: 0, y1: 1} : p.seguro ?? {y0: 0, y1: 1};
   const {m, texto: area, rosto: alvoDoRosto, faixa} = planta(W, H, f, p.lado, p.modelo === 'alerta',
-    selo ? seloPx * 1.9 : 0);
+    selo ? seloPx * 1.9 : 0, seguro);
+  const seloY = seguro.y0 * H + m;
   const rosto = p.rosto ?? rostoPadrao(p.aspecto);
 
   // A pessoa sem recorte é o próprio quadro, com o rosto no alvo.
@@ -294,7 +317,7 @@ export function compor(p: ThumbProps) {
     mao = {cx, cy, lado, angulo, espelhada: Math.cos(angulo) < 0};
   }
 
-  return {W, H, f, m, curto, comRecorte, seloPx, selo, area, faixa, alvoDoRosto, rosto, quadro,
+  return {W, H, f, m, curto, comRecorte, seloPx, selo, seloY, area, faixa, alvoDoRosto, rosto, quadro,
     fundoCobrindo, sobra, fundoPos, pessoa, caixaDaPessoa, cortada, centroDoRosto, numeroPx, d, topoDoBloco,
     alinhar, postas, blocoDeTexto, ondeEstaOAlvo, mao};
 }
@@ -337,7 +360,7 @@ function Rabisco({desenhos, cor, largura}: {desenhos: ReturnType<ReturnType<type
 export const Thumb: React.FC<ThumbProps> = (p) => {
   const id = React.useId().replace(/[^a-zA-Z0-9]/g, '');
   const c = compor(p);
-  const {W, H, f, m, curto, comRecorte, seloPx, selo, area, faixa, quadro, fundoCobrindo, sobra, fundoPos,
+  const {W, H, f, m, curto, comRecorte, seloPx, selo, seloY, area, faixa, quadro, fundoCobrindo, sobra, fundoPos,
     pessoa, cortada, centroDoRosto, d, alinhar} = c;
   const someDosLados = Boolean(pessoa && (cortada.esquerda || cortada.direita));
   const someEmCima = Boolean(pessoa && cortada.topo);
@@ -660,12 +683,12 @@ export const Thumb: React.FC<ThumbProps> = (p) => {
 
       {/* ── o selo ── */}
       {selo ? (
-        <g transform={`rotate(-5 ${seloX + seloLargura / 2} ${m + seloPx * 0.7})`}>
-          <rect x={seloX + seloPx * 0.08} y={m + seloPx * 0.1} width={seloLargura} height={seloPx * 1.4}
+        <g transform={`rotate(-5 ${seloX + seloLargura / 2} ${seloY + seloPx * 0.7})`}>
+          <rect x={seloX + seloPx * 0.08} y={seloY + seloPx * 0.1} width={seloLargura} height={seloPx * 1.4}
             rx={seloPx * 0.3} fill="#000" opacity={0.45} />
-          <rect x={seloX} y={m} width={seloLargura} height={seloPx * 1.4} rx={seloPx * 0.3}
+          <rect x={seloX} y={seloY} width={seloLargura} height={seloPx * 1.4} rx={seloPx * 0.3}
             fill={corDoAdesivo} stroke={TINTA} strokeWidth={seloPx * 0.1} />
-          <text x={seloX + seloPx * 0.45} y={m + seloPx * 1.13} fontFamily={TITULO} fontSize={seloPx}
+          <text x={seloX + seloPx * 0.45} y={seloY + seloPx * 1.13} fontFamily={TITULO} fontSize={seloPx}
             fill={TINTA}>{selo}</text>
         </g>
       ) : null}

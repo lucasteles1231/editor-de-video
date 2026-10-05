@@ -120,9 +120,10 @@ sugestões do Gemini, com uma chave grátis sua.
     <td><b>Thumbnail.</b> A pessoa é recortada do fundo, no seu computador, e vai na frente
     de outro quadro do vídeo, de uma imagem sua, de uma foto do Pexels ou de uma cor. Tem
     luz, contorno e uma mão apontando para o título, e o Gemini pode sugerir 3 ideias de
-    acordo com o que você falou. Sai em três tamanhos: YouTube (1280×720), Shorts, Reels e
-    TikTok (1080×1920) e quadrado. Cada um vai em PNG e em JPG de até 2 MB, que é o limite
-    do YouTube.</td>
+    acordo com o que você falou. Ela sai no formato de cada plataforma marcada no passo 1
+    (YouTube, Shorts, TikTok e Reels), com a chamada e o rosto dentro do pedaço que o
+    perfil mostra. O botão <b>Baixar</b> entrega em JPG de até 2 MB, que é o limite do
+    YouTube, e em PNG.</td>
   </tr>
   <tr>
     <td><img src="docs/img/funcoes/local.svg" width="44" alt=""></td>
@@ -163,7 +164,8 @@ escolher as edições, escolher a saída e, se quiser, a thumbnail.
 <img src="docs/img/interface-progresso.png" alt="O progresso da edição, etapa por etapa, com o tempo que falta" width="300" align="right">
 
 - **Envio:** um vídeo só, ou a montagem em camadas: o fundo, a pessoa ou o personagem, e
-  a escolha de onde vem o áudio (o fundo, a pessoa ou um arquivo separado).
+  a escolha de onde vem o áudio (o fundo, a pessoa ou um arquivo separado). Embaixo, onde
+  você vai postar: o editor recomenda pelo formato do vídeo.
 - **Edições:** comece por um preset e ajuste o que quiser: cada efeito, o ritmo, a pausa,
   o zoom e os sons, com um botão para ouvir cada tema.
 - **Legenda:** o idioma da fala, o tamanho do modelo, o tamanho da letra, quantas letras
@@ -184,7 +186,9 @@ seu sistema.
 ## A thumbnail
 
 O passo 5 monta uma capa à parte, em camadas. Cada camada tem uma aba, e a prévia muda
-enquanto você mexe.
+enquanto você mexe. Embaixo da prévia, um botão **Baixar** para cada formato entrega a
+capa como está na tela, em JPG (e em PNG), e guarda uma cópia na pasta do vídeo. Funciona
+antes e depois de editar o vídeo.
 
 <p align="center">
   <img src="docs/img/thumb-ideias.png" alt="Três ideias de thumbnail sugeridas pelo Gemini para o vídeo de exemplo, cada uma com a pessoa recortada, uma chamada e uma luz diferente" width="100%">
@@ -198,7 +202,7 @@ enquanto você mexe.
   ou raios) e um realce de contraste. Para mudar a pessoa de lugar, arraste na prévia.
 - **Mão:** um emoji de mão que gira sozinho até o dedo apontar para o título. Ela vem em
   3D ou em vetor, nos seis tons de pele, e também se arrasta.
-- **Detalhes:** a cor de destaque, o ícone, o selo e os tamanhos que vão sair.
+- **Detalhes:** a cor de destaque, o ícone e o selo.
 
 <p align="center">
   <img src="docs/img/thumb-abas.png" alt="A prévia da thumbnail ao lado da aba Fundo, com as cinco fontes de fundo e os controles de desfoque" width="760">
@@ -214,6 +218,31 @@ enquanto você mexe.
 
 O recorte da pessoa usa o [MODNet](https://github.com/ZHKKKe/MODNet) no seu computador.
 Na primeira thumbnail com recorte, o editor baixa o modelo, que tem 26 MB.
+
+### Uma capa para cada plataforma
+
+O formato da capa vem de **Onde você vai postar?**, no passo 1. Dá para marcar várias, e
+sai uma capa por formato: uma em pé serve para Shorts, TikTok e Reels ao mesmo tempo.
+
+| Plataforma | Capa | Onde ela é cortada |
+|---|---|---|
+| **YouTube** | 1280×720 | aparece inteira |
+| **YouTube Shorts** | 1080×1920 | a busca mostra só o meio, em 3:2 |
+| **TikTok** | 1080×1920 | o perfil mostra o meio, em 3:4 |
+| **Instagram Reels** | 1080×1920 | o perfil mostra o meio, em 3:4, e o feed, em 4:5 |
+
+- **A recomendação:** um vídeo em pé (ou quadrado) recomenda Shorts, TikTok e Reels; um
+  deitado, o YouTube. Até você mexer, a escolha segue a recomendação.
+- **A capa em pé:** a chamada e o rosto ficam dentro do pedaço que os perfis do TikTok e
+  do Instagram mostram. Com Shorts marcado, a chamada também cabe no meio que a busca do
+  YouTube mostra. A prévia desenha esses cortes com linhas tracejadas, que não saem na
+  imagem, e a miniatura mostra a capa como o perfil mostra.
+- **O Shorts:** a capa própria de um Short só vale para quem está no Programa de
+  Parcerias do YouTube, e só pelo computador (desde julho de 2026).
+- **Na montagem,** a plataforma também decide o quadro do vídeo: em pé para Shorts,
+  TikTok e Reels, e deitado para o YouTube. Com as duas misturadas, vale o que estiver
+  no passo 4.
+- **As ideias do Gemini** sabem onde o vídeo vai ser postado.
 
 ### Ideias do Gemini (opcional)
 
@@ -257,8 +286,9 @@ separados. No passo 1, escolha **Um fundo e, por cima, você ou um personagem**:
   separado (MP3, WAV ou M4A). Com o personagem, que não tem som, as opções são o fundo e
   o áudio separado. É desse áudio que saem a legenda e os cortes, e um vídeo sem som fica
   com a opção desligada.
-- **O formato do quadro** fica no passo 4: igual ao fundo, em pé, deitado ou quadrado. O
-  fundo entra inteiro, e as sobras ficam com ele mesmo, desfocado.
+- **O formato do quadro** segue a plataforma escolhida no passo 1, e dá para trocar no
+  passo 4: igual ao fundo, em pé, deitado ou quadrado. O fundo entra inteiro, e as sobras
+  ficam com ele mesmo, desfocado.
 
 A pessoa (ou o personagem) começa embaixo no meio, em pé, ou embaixo à direita, deitado e
 quadrado. Em alguns cortes, ela anda: com um ícone, para o lado oposto ao dele; com uma
@@ -280,9 +310,10 @@ editável, e mexer em qualquer um troca a marca para **Personalizado**.
 | **Humor** | tempo de piada | pausa de 0,25 s, zoom de 18%, ritmo 1,6× e sons engraçados, também nos cortes |
 | **Motivacional** | frases de impacto | legenda grande, de 14 letras, e sons épicos |
 | **Corte de podcast** | conversa que respira | pausa de 0,80 s, respiro de 0,25 s, ritmo 0,6×, quase nenhum som e a pessoa parada |
-| **Aula ou tutorial longo** | vídeo longo e deitado | ritmo 0,5×, legenda de 36 letras, quadro deitado e thumbnail 16:9 |
+| **Aula ou tutorial longo** | vídeo longo | ritmo 0,5×, legenda de 36 letras, poucos efeitos e a pessoa parada |
 
-- **Os de Short** deixam a montagem em pé e a thumbnail em 1080×1920.
+- **O formato** (em pé ou deitado) não é do preset: vem da plataforma escolhida no passo
+  1. O preset muda o estilo, e o modelo e a cor da thumbnail.
 - **O ritmo** multiplica quantos adesivos, ícones, zooms e sons entram. Em 2×, entra o
   dobro, mais perto um do outro; em 0,5×, a metade.
 - **O respiro** é o silêncio que fica no lugar de uma pausa cortada.
