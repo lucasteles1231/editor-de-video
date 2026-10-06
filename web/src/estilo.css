@@ -871,7 +871,15 @@ button.link { padding: 0; border: none; background: none; color: inherit; font: 
   border-radius: 16px;
   box-shadow: var(--sombra);
   font-family: var(--corpo);
-  max-width: 340px;
+  max-width: min(420px, calc(100vw - 32px));
+}
+
+.driver-popover.tour-editor code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.88em;
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: var(--papel);
 }
 
 .driver-popover.tour-editor .driver-popover-title { font-family: var(--titulo); font-size: 18px; }

@@ -68,14 +68,18 @@ def test_tour_edicao_e_thumbnail(navegador, endereco, tmp_path):
     pagina.on("console", lambda m: m.type == "error" and erros.append(m.text))
     pagina.goto(endereco)
 
-    # O tour abre sozinho na primeira visita e passa pelos sete passos. Cada passo é
-    # esperado antes do clique seguinte: o balão anima entre um e outro, e no CI (mais
-    # lento) o texto ainda dizia "6 de 7" logo depois do sexto clique.
+    # O tour abre sozinho na primeira visita: os dois jeitos de usar e um passo por área
+    # (nove ao todo). Cada passo é esperado antes do clique seguinte: o balão anima entre
+    # um e outro, e no CI (mais lento) o texto ainda dizia "6 de 7" logo depois do sexto
+    # clique.
     progresso = pagina.locator(".driver-popover-progress-text")
-    expect(progresso).to_have_text("1 de 7", timeout=10_000)
-    for passo in range(2, 8):
+    expect(progresso).to_have_text("1 de 9", timeout=10_000)
+    expect(pagina.locator(".driver-popover-title")).to_have_text("Dois jeitos de usar")
+    expect(pagina.locator(".driver-popover-description")).to_contain_text(
+        "Notícia com cenas")
+    for passo in range(2, 10):
         pagina.locator(".driver-popover-next-btn").click()
-        expect(progresso).to_have_text(f"{passo} de 7")
+        expect(progresso).to_have_text(f"{passo} de 9")
     pagina.locator(".driver-popover-next-btn").click()      # "Começar a editar"
     pagina.locator(".driver-popover").wait_for(state="detached")
 

@@ -18,6 +18,7 @@
 <p align="center">
   <a href="#começo-rápido"><b>Instalar</b></a> ·
   <a href="#o-que-ele-faz">O que ele faz</a> ·
+  <a href="#como-usar">Como usar</a> ·
   <a href="#a-interface">A interface</a> ·
   <a href="#a-montagem-em-camadas">Camadas</a> ·
   <a href="#a-thumbnail">A thumbnail</a> ·
@@ -36,6 +37,10 @@ a edição que tomaria uma tarde, no estilo dos Shorts, Reels e TikTok:
 - faz as palavras importantes saltarem da tela;
 - põe zoom, ícones e efeitos sonoros;
 - e ainda gera a thumbnail.
+
+Para um vídeo de notícia, você nem aparece: traz uma pasta de cenas, a narração e, se
+quiser, um personagem. O editor monta o vídeo com as cenas que combinam com o que é dito,
+cartões animados, câmera e bipe nas palavras que precisam dele.
 
 Por padrão, ele roda **inteiro no seu computador**, sem conta, sem chave de API, sem
 assinatura e sem marca d'água. A transcrição é feita pelo Whisper na sua própria máquina,
@@ -163,6 +168,62 @@ roteiro (as cenas da biblioteca, os cartões animados e os destaques da legenda)
 roteiro é um pedido de texto da cota grátis por vídeo, mais um quando a resposta precisa
 de conserto. O resultado diz quantos foram, contando as tentativas que o Google recusou.
 
+## Como usar
+
+Há dois jeitos, e o tour da página (botão **Tour**, no topo) mostra os dois.
+
+### Um vídeo seu falando
+
+1. Digite `editar`. O navegador abre no editor.
+2. No passo 1, arraste o vídeo e marque onde vai postar.
+3. No passo 2, escolha o preset do tipo de vídeo: vlog, gameplay, review, aula…
+4. Clique em **Editar vídeo**. O vídeo editado, as legendas e as thumbnails ficam na
+   pasta mostrada no resultado.
+
+### Uma notícia montada com cenas
+
+Para uma narração sobre um assunto com muitas imagens: um trailer, uma notícia, um jogo.
+Você traz:
+
+| O quê | Como |
+|---|---|
+| **A pasta das cenas** | clipes curtos, de uns 2 s cada; as subpastas também valem |
+| **A matriz** | o `cenas.json`, dentro da pasta, com o arquivo e a descrição de cada cena (o formato está em [Biblioteca de cenas](#biblioteca-de-cenas)) |
+| **A narração** | um arquivo de áudio, ou vários, um por parágrafo, que tocam na ordem do nome |
+| **O personagem** (opcional) | um GIF, PNG animado ou WebP, com a boca fechada no primeiro quadro |
+| **A chave do Gemini** (opcional e grátis) | colada no passo 5. Sem ela, as cenas saem pelas palavras e não há cartões |
+
+<img src="docs/img/interface-noticia.png" alt="O passo 1 com a biblioteca de cenas: a pasta enviada com 5 cenas, um personagem de palito por cima e dois parágrafos de narração, e o YouTube Shorts marcado" width="420" align="right">
+
+1. No passo 1, escolha **Um fundo e, por cima…** e, em **O fundo**, **Biblioteca de
+   cenas**. Arraste a pasta: os clipes sobem, e o `cenas.json` de dentro dela entra
+   junto. A ficha mostra quantas cenas entraram e quantas ficaram de fora.
+2. Em **Por cima**, envie o personagem (ou escolha **Nada**). Em **O áudio vem de**,
+   envie os arquivos da narração.
+3. Em **Onde você vai postar**, marque Shorts, TikTok ou Reels para o vídeo sair em pé.
+4. No passo 2, escolha o preset **Notícia com cenas**. Ele liga a janela com câmera, os
+   cartões animados, a voz de estúdio, o bipe, a legenda em destaques e os sons do tema
+   Notícia. A lista do bipe vem com as palavras de um vídeo de exemplo: troque pelas do
+   seu.
+5. No passo 5, cole a chave do Gemini, se ainda não colou.
+6. Clique em **Editar vídeo**. Uma narração de 50 s leva uns 2 minutos num MacBook M5. O
+   resultado diz quantas cenas e cartões o Gemini escreveu e quantos pedidos da cota
+   usou.
+
+<br clear="right">
+
+Algumas dicas:
+
+- **Confira a legenda.** O Whisper `small` erra nomes: "leve no" já virou "Levin". O
+  `medium`, no passo 3, erra menos e demora mais. Um erro na fala aparece na legenda e
+  pode até virar a pílula de destaque.
+- **O bipe** pega só as palavras da lista do passo 2, e a lista também ajuda o Whisper a
+  ouvir essas palavras.
+- **Na primeira vez sem internet,** os quatro sons do tema Notícia que vêm do Remotion
+  tocam um parecido da Kenney.
+- **No terminal,** o mesmo vídeo sai com
+  `editar --cenas cenas/ --matriz cenas/cenas.json --audio p1.m4a p2.m4a --personagem boneco.gif --preset noticia --quadro vertical`.
+
 ## A interface
 
 Digite `editar` e o navegador abre no editor. O caminho é sempre o mesmo: enviar o vídeo,
@@ -175,12 +236,12 @@ escolher as edições, escolher a saída e, se quiser, a thumbnail.
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/img/interface-tour.png" alt="O tour guiado explicando as opções de saída"></td>
+    <td width="50%"><img src="docs/img/interface-tour.png" alt="O tour guiado no primeiro passo, que explica os dois jeitos de usar: um vídeo seu falando ou uma notícia montada com cenas"></td>
     <td width="50%"><img src="docs/img/interface-resultado.png" alt="A thumbnail com prévia ao vivo e o resultado, com os botões de baixar"></td>
   </tr>
   <tr>
-    <td><b>Tour guiado.</b> Na primeira visita, sete passos curtos mostram cada parte.
-    O botão <b>Tour</b> refaz quando quiser.</td>
+    <td><b>Tour guiado.</b> Na primeira visita, nove passos curtos mostram os dois jeitos
+    de usar e cada parte da página. O botão <b>Tour</b> refaz quando quiser.</td>
     <td><b>Thumbnail e resultado.</b> A prévia muda enquanto você escolhe. Toque numa palavra
     do título para ela virar o adesivo.</td>
   </tr>

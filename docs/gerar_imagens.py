@@ -2,6 +2,7 @@
 As imagens do README, feitas pelo próprio editor.
 
     uv run python docs/gerar_imagens.py exemplo.mp4
+    uv run python docs/gerar_imagens.py --so-noticia     # só a montagem com cenas e o tour
 
 ``exemplo.mp4`` é qualquer vídeo com fala; ele não vai para o repositório. O do README é
 "Man doing podcast", de cottonbro studio (Pexels, licença livre), recortado em 9:16 e
@@ -18,6 +19,9 @@ Gera em ``docs/img/``:
   recortada pelo MODNet;
 - ``interface-montagem.png``: o passo 1 na montagem, com o fundo, um personagem de
   palito (desenhado aqui mesmo, sem licença de ninguém) e a narração do exemplo;
+- ``interface-noticia.png`` e ``interface-tour.png``: o passo 1 com a biblioteca de cenas
+  (clipes feitos das próprias imagens do README, com uma matriz), o palito e dois áudios;
+  e o tour no passo que explica os dois jeitos de usar. Não precisam do exemplo;
 - ``interface*.png``: a página, pelo Playwright (precisa do Chromium:
   ``uv run playwright install chromium``), como ela chega para quem instala: sem chave
   nenhuma. A chave de quem gera as imagens nem é lida, porque o final dela apareceria;
@@ -29,6 +33,8 @@ Gera em ``docs/img/``:
 from __future__ import annotations
 
 import argparse
+import contextlib
+import json
 import os
 import re
 import sys
@@ -156,6 +162,67 @@ def desenhar_palito(caminho: Path) -> Path:
     quadros[0].save(caminho, save_all=True, append_images=quadros[1:], duration=110, loop=0,
                     disposal=2)
     return caminho
+
+
+def biblioteca_de_exemplo(pasta: Path) -> Path:
+    """Uma biblioteca de cenas para as capturas: clipes de 2 s, em 16:9, feitos das
+    próprias imagens do README, e a matriz deles (``cenas.json``) na mesma pasta."""
+    import av
+    import numpy as np
+
+    cenas = pasta / "cenas"
+    (cenas / "clipes").mkdir(parents=True, exist_ok=True)
+    fontes = {"estudio-microfone": ("quadro-legenda.png", "Homem fala ao microfone num estúdio"),
+              "adesivo-amarelo": ("quadro-adesivo.png", "A palavra salta num balão amarelo"),
+              "icone-moeda": ("quadro-icone.png", "Uma moeda aparece ao lado de quem fala"),
+              "tela-do-editor": ("quadro-montagem.png", "A tela do editor gravada"),
+              "antes-e-depois": ("antes-depois.png", "O mesmo quadro, antes e depois"),
+              "capa-do-editor": ("banner.png", "A capa do editor de vídeo")}
+    matriz = []
+    for k, (nome, (imagem, descricao)) in enumerate(fontes.items()):
+        with Image.open(IMG / imagem) as im:
+            im = im.convert("RGB")
+            alto = min(im.height, round(im.width * 9 / 16))
+            topo = (im.height - alto) // 2
+            quadro_ = np.asarray(im.crop((0, topo, im.width, topo + alto)).resize((640, 360)))
+        arquivo = cenas / "clipes" / f"{nome}.mp4"
+        with av.open(str(arquivo), "w") as c:
+            v = c.add_stream("libx264", rate=30, options={"crf": "28", "preset": "ultrafast"})
+            v.width, v.height, v.pix_fmt = 640, 360, "yuv420p"
+            for i in range(60):
+                f = av.VideoFrame.from_ndarray(quadro_, format="rgb24")
+                f.pts = i
+                for pacote in v.encode(f):
+                    c.mux(pacote)
+            for pacote in v.encode():
+                c.mux(pacote)
+        matriz.append({"id": f"c{k + 1:02d}", "arquivo": f"clipes/{nome}.mp4",
+                       "descricao": descricao, "energia": "alta" if k == 0 else "media",
+                       "monetizacao": "evitar" if nome == "antes-e-depois" else "ok"})
+    (cenas / "cenas.json").write_text(json.dumps(matriz, ensure_ascii=False, indent=2),
+                                      encoding="utf-8")
+    return cenas
+
+
+def partes_de_narracao(pasta: Path) -> list[Path]:
+    """Dois "parágrafos" de narração de teste (um tom com pausas): na captura, só os nomes
+    e as durações aparecem."""
+    import wave
+
+    import numpy as np
+
+    partes = []
+    for k, segundos in ((1, 6.0), (2, 8.5)):
+        t = np.arange(int(segundos * video.TAXA)) / video.TAXA
+        som = 0.2 * np.sin(2 * np.pi * 220 * t) * ((t % 1.2) < 0.9)
+        caminho = pasta / f"Parágrafo {k}.wav"
+        with wave.open(str(caminho), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(video.TAXA)
+            w.writeframes((som * 32767).astype("<i2").tobytes())
+        partes.append(caminho)
+    return partes
 
 
 def narracao(exemplo: Path, caminho: Path) -> Path:
@@ -403,10 +470,27 @@ def gravar_tela(exemplo: Path, pasta: Path) -> Path:
     return destino
 
 
-def capturas(exemplo: Path, pasta: Path, *, ia_de_verdade: bool = False,
-             tela: Path | None = None, com_ideias: bool = True) -> None:
+SEM_TOUR = ("localStorage.setItem('editor-tour-visto', '1');"
+            "performance.setResourceTimingBufferSize(10000);")
+
+
+def salvar(png: bytes, nome: str, largura: int = 1600) -> None:
+    caminho = IMG / nome
+    caminho.write_bytes(png)
+    with Image.open(caminho) as im:
+        im = im.convert("RGB")
+        if im.width > largura:
+            im = im.resize((largura, round(im.height * largura / im.width)), Image.LANCZOS)
+        arredondar(im, 14).save(caminho, optimize=True)
+    print(f"  {nome}")
+
+
+@contextlib.contextmanager
+def servidor_isolado(pasta: Path):
+    """O servidor do editor como ele chega para quem instala: sem chave nenhuma (a de quem
+    gera as imagens nem é lida, porque o final dela apareceria). Devolve o endereço e a
+    pasta de configuração de verdade, para quem quiser a IA de verdade depois."""
     import uvicorn
-    from playwright.sync_api import sync_playwright
 
     from editor import chaves, servidor
 
@@ -420,19 +504,70 @@ def capturas(exemplo: Path, pasta: Path, *, ia_de_verdade: bool = False,
     threading.Thread(target=srv.run, daemon=True).start()
     while not srv.started:
         time.sleep(0.05)
-    url = f"http://127.0.0.1:{porta}/?t={token}"
-    sem_tour = ("localStorage.setItem('editor-tour-visto', '1');"
-                "performance.setResourceTimingBufferSize(10000);")
+    try:
+        yield f"http://127.0.0.1:{porta}/?t={token}", config_de_verdade
+    finally:
+        chaves.pasta_de_config = config_de_verdade
+        srv.should_exit = True
 
-    def salvar(png: bytes, nome: str, largura: int = 1600) -> None:
-        caminho = IMG / nome
-        caminho.write_bytes(png)
-        with Image.open(caminho) as im:
-            im = im.convert("RGB")
-            if im.width > largura:
-                im = im.resize((largura, round(im.height * largura / im.width)), Image.LANCZOS)
-            arredondar(im, 14).save(caminho, optimize=True)
-        print(f"  {nome}")
+
+def capturas_da_noticia(nav, url: str, pasta: Path) -> None:
+    """O passo 1 com a biblioteca de cenas, o palito por cima e dois áudios; e o tour, no
+    passo que explica os dois jeitos de usar."""
+    cenas = biblioteca_de_exemplo(pasta)
+    partes = partes_de_narracao(pasta)
+    palito = desenhar_palito(pasta / "palito.gif")
+    ctx = nav.new_context(viewport={"width": 1280, "height": 1500}, device_scale_factor=2,
+                          color_scheme="light")
+    ctx.add_init_script(SEM_TOUR)
+    pagina = ctx.new_page()
+    pagina.goto(url)
+    pagina.get_by_role("button", name="Um fundo e, por cima").click()
+    pagina.get_by_role("button", name="Biblioteca de cenas").click()
+    pagina.set_input_files('[data-envio="cenas"] input', str(cenas))
+    pagina.get_by_label("dados da biblioteca de cenas").wait_for(timeout=60_000)
+    pagina.get_by_role("button", name="Personagem animado").click()
+    pagina.set_input_files('[data-envio="personagem"] input', str(palito))
+    pagina.get_by_label("dados do personagem").wait_for(timeout=60_000)
+    pagina.set_input_files('[data-envio="audio"] input', [str(p) for p in partes])
+    pagina.get_by_label("os áudios separados").get_by_text("Parágrafo 2").wait_for(
+        timeout=60_000)
+    onde = pagina.get_by_role("group", name="onde você vai postar")
+    onde.get_by_role("button", name=re.compile("^YouTube Shorts")).click()
+    onde.get_by_role("button", name=re.compile("^YouTube( recomendado)?$")).click()
+    pagina.get_by_role("button", name=re.compile("^Notícia com cenas")).click()
+    pagina.wait_for_timeout(1200)
+    # O cabeçalho fica preso no topo e cobriria o começo do passo na captura do elemento.
+    estilo = pagina.add_style_tag(content=".cabecalho { position: static !important; }")
+    salvar(pagina.locator("#passo-envio").screenshot(), "interface-noticia.png", 1200)
+    estilo.evaluate("e => e.remove()")
+
+    # O tour, no primeiro passo: os dois jeitos de usar.
+    pagina.set_viewport_size({"width": 1280, "height": 800})
+    pagina.evaluate("window.scrollTo(0, 0)")
+    pagina.get_by_role("button", name="Tour").click()
+    pagina.locator(".driver-popover-title").get_by_text("Dois jeitos de usar").wait_for()
+    pagina.wait_for_timeout(900)
+    salvar(pagina.screenshot(), "interface-tour.png")
+    ctx.close()
+
+
+def capturas(exemplo: Path, pasta: Path, *, ia_de_verdade: bool = False,
+             tela: Path | None = None, com_ideias: bool = True) -> None:
+    from playwright.sync_api import sync_playwright
+
+    from editor import chaves
+
+    with servidor_isolado(pasta) as (url, config_de_verdade):
+        _capturas(exemplo, pasta, url, config_de_verdade, ia_de_verdade=ia_de_verdade,
+                  tela=tela, com_ideias=com_ideias, sync_playwright=sync_playwright,
+                  chaves=chaves)
+
+
+def _capturas(exemplo: Path, pasta: Path, url: str, config_de_verdade, *,
+              ia_de_verdade: bool, tela: Path | None, com_ideias: bool, sync_playwright,
+              chaves) -> None:
+    sem_tour = SEM_TOUR
 
     def enviar(pagina) -> None:
         pagina.goto(url)
@@ -455,16 +590,6 @@ def capturas(exemplo: Path, pasta: Path, *, ia_de_verdade: bool = False,
                 if tema == "dark":
                     ctx.close()
                     continue
-
-                # O tour, no passo das opções de saída.
-                pagina.get_by_role("button", name="Tour").click()
-                for _ in range(3):
-                    pagina.locator(".driver-popover-next-btn").click()
-                    pagina.wait_for_timeout(500)
-                pagina.wait_for_timeout(900)
-                salvar(pagina.screenshot(), "interface-tour.png")
-                pagina.keyboard.press("Escape")
-                pagina.locator(".driver-popover").wait_for(state="detached")
 
                 # A edição andando, e depois o resultado e a thumbnail.
                 pagina.get_by_role("button", name="Editar vídeo").click()
@@ -502,13 +627,16 @@ def capturas(exemplo: Path, pasta: Path, *, ia_de_verdade: bool = False,
                                        str(desenhar_palito(pasta / "palito.gif")))
                 pagina.get_by_label("dados do personagem").wait_for(timeout=60_000)
                 pagina.get_by_role("group", name="de onde vem o áudio").get_by_role(
-                    "button", name="Um áudio separado").click()
+                    "button", name="Áudio separado").click()
                 pagina.set_input_files('[data-envio="audio"] input',
                                        str(narracao(exemplo, pasta / "narracao.wav")))
-                pagina.get_by_label("dados do áudio separado").wait_for(timeout=60_000)
+                pagina.get_by_label("os áudios separados").wait_for(timeout=60_000)
                 pagina.wait_for_timeout(1200)
                 salvar(pagina.locator("#passo-envio").screenshot(), "interface-montagem.png", 1200)
                 ctx.close()
+
+            # A montagem com a biblioteca de cenas, e o tour.
+            capturas_da_noticia(nav, url, pasta)
 
             # A thumbnail com IA: as três ideias e a prévia com as abas.
             if not com_ideias:
@@ -543,7 +671,20 @@ def capturas(exemplo: Path, pasta: Path, *, ia_de_verdade: bool = False,
             chaves.pasta_de_config = config_de_verdade
             os.environ.pop("EDITOR_IA", None)
             nav.close()
-            srv.should_exit = True
+
+
+def so_noticia() -> None:
+    """Só as imagens da montagem com cenas e do tour, e os ícones: sem o vídeo de exemplo."""
+    from playwright.sync_api import sync_playwright
+
+    icones_das_funcoes()
+    with tempfile.TemporaryDirectory() as tmp, servidor_isolado(Path(tmp)) as (url, _), \
+            sync_playwright() as p:
+        nav = p.chromium.launch()
+        try:
+            capturas_da_noticia(nav, url, Path(tmp))
+        finally:
+            nav.close()
 
 
 # ── os ícones das funções ──────────────────────────────────────────────────
@@ -556,6 +697,7 @@ FUNCOES = {
     "adesivos": ("sticker", CIANO), "zoom": ("zoom-in", LIMA),
     "pessoa": ("arrows-move", ROSA), "icones": ("icons", ROXO),
     "sons": ("volume", AMARELO), "thumbnail": ("photo", ROSA), "local": ("lock", CIANO),
+    "cenas": ("movie", LIMA), "cartoes": ("layout-cards", CIANO), "voz": ("microphone", ROXO),
 }
 
 
@@ -584,7 +726,9 @@ def icones_das_funcoes() -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0].strip())
-    ap.add_argument("exemplo", type=Path, help="um vídeo com fala")
+    ap.add_argument("exemplo", type=Path, nargs="?", help="um vídeo com fala")
+    ap.add_argument("--so-noticia", action="store_true",
+                    help="só a montagem com cenas, o tour e os ícones (sem o exemplo)")
     ap.add_argument("--sem-capturas", action="store_true", help="pula as capturas da página")
     ap.add_argument("--ia-de-verdade", action="store_true",
                     help="as ideias de thumbnail vêm do Gemini, com a chave salva no editor")
@@ -592,6 +736,11 @@ def main() -> int:
                     help="não refaz as capturas das ideias de thumbnail (guarda a cota)")
     args = ap.parse_args()
     IMG.mkdir(parents=True, exist_ok=True)
+    if args.so_noticia:
+        so_noticia()
+        return 0
+    if args.exemplo is None:
+        ap.error("falta o vídeo de exemplo (ou use --so-noticia)")
     with tempfile.TemporaryDirectory() as tmp:
         pasta = Path(tmp)
         editado, plano = editar(args.exemplo, pasta)

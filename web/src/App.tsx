@@ -584,8 +584,8 @@ export const App: React.FC = () => {
         <div className="coluna">
           <div className="intro">
             <h1>Seu vídeo falado, <span className="destaque-amarelo">editado</span> no estilo dos Shorts.</h1>
-            <p>Legenda karaokê, cortes de silêncio, zoom, palavras que saltam, ícones, sons e thumbnail —
-              tudo feito aqui no seu computador.</p>
+            <p>Legenda, cortes de silêncio, zoom, palavras que saltam, ícones, sons e thumbnail. Ou uma notícia
+              montada a partir de uma pasta de cenas, com cartões animados — tudo feito aqui no seu computador.</p>
           </div>
           <PassoEnvio modo={modo} setModo={trocarModo} video={unico} fundo={fundo} pessoa={pessoa}
             personagem={personagem} audios={audios} biblioteca={biblioteca}
