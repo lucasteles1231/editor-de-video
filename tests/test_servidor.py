@@ -5,9 +5,11 @@ então uma edição inteira leva alguns segundos.
 from __future__ import annotations
 
 import io
+import json
 import threading
 import time
 from itertools import pairwise
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -408,10 +410,12 @@ class TestAMontagem:
         assert t["resultado"]["duracao_original"] == pytest.approx(2.0, abs=0.1)
 
     def test_montagem_sem_nada_por_cima(self, cliente, tmp_path):
-        fundo = _enviar(cliente, fazer_video(tmp_path / "tela.mp4"))
+        """Por cima pode não ir nada: só o fundo, a legenda e os efeitos."""
+        fundo = _enviar(cliente, fazer_video(tmp_path / "tela.mp4", segundos=2.0))
         r = cliente.post("/api/tarefas", headers=CABECA,
                          json={"montagem": {"fundo_id": fundo["id"]}, "edicao": {}, "saida": {}})
-        assert r.status_code == 422
+        assert r.status_code == 200, r.text
+        assert _esperar(cliente, r.json()["id"])["estado"] == "pronto"
 
 
 class TestPresetsESons:
@@ -499,3 +503,98 @@ class TestBaixarAThumbnail:
         assert r.status_code == 422
         assert cliente.get("/api/thumbnails/outra.jpg", headers=CABECA).status_code == 404
         assert cliente.get("/api/thumbnails/..%2F..%2Fsegredo", headers=CABECA).status_code == 404
+
+
+class TestABiblioteca:
+    """A biblioteca de cenas pela API: a pasta (um clipe por pedido), a matriz e a edição
+    com ela, nada por cima e a narração em dois arquivos."""
+
+    def _clipes(self, tmp_path, nomes=("t1-001", "t1-002", "t1-003")) -> list:
+        pasta = tmp_path / "cenas"
+        pasta.mkdir(exist_ok=True)
+        return [fazer_video(pasta / f"{n}.mp4", largura=320, altura=180, segundos=1.0,
+                            com_audio=False) for n in nomes]
+
+    def _abrir(self, cliente, tmp_path, matriz: list | None = None) -> str:
+        bid = cliente.post("/api/bibliotecas", headers=CABECA, json={"nome": "cenas"}).json()["id"]
+        for c in self._clipes(tmp_path):
+            with open(c, "rb") as f:
+                r = cliente.post(f"/api/bibliotecas/{bid}/clipes", headers=CABECA,
+                                 files={"arquivo": (c.name, f, "video/mp4")})
+            assert r.status_code == 200, r.text
+        if matriz is not None:
+            r = cliente.post(f"/api/bibliotecas/{bid}/matriz", headers=CABECA,
+                             files={"arquivo": ("cenas.json", json.dumps(matriz).encode(),
+                                                "application/json")})
+            assert r.status_code == 200, r.text
+        return bid
+
+    MATRIZ = (
+        {"id": "t1-001", "arquivo": "clipes/t1-001.mp4", "descricao": "explosão",
+         "energia": "alta"},
+        {"id": "t1-002", "arquivo": "t1-002.mp4", "descricao": "praia"},
+        {"id": "t1-003", "arquivo": "t1-003.mp4", "descricao": "boate", "monetizacao": "evitar"},
+    )
+
+    def test_a_pasta_e_a_matriz(self, cliente, tmp_path):
+        bid = self._abrir(cliente, tmp_path)
+        with open(self._clipes(tmp_path)[0], "rb") as f:
+            r = cliente.post(f"/api/bibliotecas/{bid}/clipes", headers=CABECA,
+                             files={"arquivo": ("leia-me.txt", f, "text/plain")})
+        assert r.status_code == 400 and "só vídeos" in r.json()["detail"]
+        r = cliente.post(f"/api/bibliotecas/{bid}/matriz", headers=CABECA,
+                         files={"arquivo": ("cenas.json", json.dumps(list(self.MATRIZ)).encode(),
+                                            "application/json")})
+        ficha = r.json()
+        assert (ficha["cenas"], ficha["evitadas"]) == (2, 1)
+        # a capa é a cena forte, registrada como vídeo (a thumbnail tira os quadros dela)
+        assert ficha["capa"]["nome"] == "t1-001.mp4" and ficha["capa"]["largura"] == 320
+        quadro = cliente.get(f"/api/videos/{ficha['capa']['id']}/quadro?segundo=0.5",
+                             headers=CABECA)
+        assert quadro.status_code == 200
+
+    @pytest.mark.parametrize(("conteudo", "status", "trecho"), [
+        (b"{quebrado", 422, "JSON"),
+        (b'[{"arquivo": "nenhum.mp4", "descricao": "x"}]', 422, "nenhuma cena"),
+        (b"\xff\xfe\x00", 422, "UTF-8"),
+        (b"[" + b" " * (3 * 1024 * 1024) + b"]", 400, "2 MB"),
+    ])
+    def test_matriz_ruim(self, cliente, tmp_path, conteudo, status, trecho):
+        bid = self._abrir(cliente, tmp_path)
+        r = cliente.post(f"/api/bibliotecas/{bid}/matriz", headers=CABECA,
+                         files={"arquivo": ("cenas.json", conteudo, "application/json")})
+        assert r.status_code == status and trecho in r.json()["detail"]
+
+    def test_sem_matriz_nao_edita(self, cliente, tmp_path):
+        bid = self._abrir(cliente, tmp_path)
+        r = cliente.post("/api/tarefas", headers=CABECA, json={
+            "montagem": {"biblioteca_id": bid, "fala": "audio", "formato": "vertical"}})
+        assert r.status_code == 422 and "matriz" in r.json()["detail"]
+        r = cliente.post("/api/tarefas", headers=CABECA, json={
+            "montagem": {"biblioteca_id": "nao-existe", "fala": "audio"}})
+        assert r.status_code == 404
+
+    def test_edita_com_as_cenas_e_dois_audios(self, cliente, tmp_path):
+        from tests.test_montagem import audio_wav
+
+        bid = self._abrir(cliente, tmp_path, list(self.MATRIZ))
+        ids = []
+        for nome in ("parte 1.wav", "parte 2.wav"):
+            with open(audio_wav(tmp_path / nome, segundos=2.5, falas=((0.3, 2.2),)), "rb") as f:
+                r = cliente.post("/api/audios", headers=CABECA,
+                                 files={"arquivo": (nome, f, "audio/wav")})
+            ids.append(r.json()["id"])
+        r = cliente.post("/api/tarefas", headers=CABECA, json={
+            "montagem": {"biblioteca_id": bid, "audio_ids": ids, "fala": "audio",
+                         "formato": "vertical"},
+            "edicao": {"janela": True, "animacoes": True, "voz": "limpa",
+                       "estilo_da_legenda": "destaques", "bipe": "sexo"},
+            "saida": {"resolucao": "480p"}})
+        assert r.status_code == 200, r.text
+        t = _esperar(cliente, r.json()["id"], limite=120)
+        assert t["estado"] == "pronto", t["erro"]
+        resultado = t["resultado"]
+        assert resultado["roteiro"]["por"] == "falsa" and resultado["roteiro"]["cenas"] >= 2
+        assert Path(resultado["video"]).name == "cenas-editado.mp4"
+        plano = json.loads(Path(resultado["plano"]).read_text(encoding="utf-8"))
+        assert {b["tipo"] for b in plano["blocos"]} <= {"linha", "pilula"}

@@ -21,6 +21,7 @@ Instituto Palito usa nos Shorts dele:
 from __future__ import annotations
 
 import functools
+import math
 import re
 import unicodedata
 from collections.abc import Sequence
@@ -41,6 +42,24 @@ FIM_DE_FRASE = (".", "?", "!", "…")
 #: Se a próxima fala demora mais que isto, o bloco some antes dela.
 SOME_DEPOIS_S = 0.60
 SEGURA_S = 0.30
+
+#: Os estilos da legenda: "classica" (uma linha, karaokê) e "destaques" (a do vídeo de
+#: referência): páginas de até 4 palavras, que entram uma a uma, com as cores dos
+#: destaques e a frase de efeito numa pílula amarela.
+ESTILOS_DA_LEGENDA = ("classica", "destaques")
+#: As cores de um destaque: "rosa" (expressão forte), "ciano" (nome, marca, lugar) e
+#: "pilula" (a frase de efeito, sozinha numa placa).
+DESTAQUES = ("rosa", "ciano", "pilula")
+#: A página quebra em 4 palavras, na vírgula e no ponto, em 1,7 s ou numa pausa maior
+#: que 350 ms; uma de uma ou duas palavras com menos de meio segundo junta com a vizinha.
+PAGINA_PALAVRAS = 4
+PAGINA_MAXIMA_S = 1.7
+PAGINA_PAUSA_S = 0.35
+PAGINA_CURTA_S = 0.5
+#: A página entra 80 ms antes da primeira palavra e fica 450 ms depois da última (ou até
+#: 30 ms antes da seguinte).
+PAGINA_ANTES_S = 0.08
+PAGINA_DEPOIS_S = 0.45
 
 #: Palavras que não podem terminar um bloco: anunciam a seguinte e não significam
 #: nada sozinhas. Num karaokê o olho chega no "e se" e fica esperando o resto.
@@ -174,6 +193,10 @@ class Bloco:
     chave: int = -1
     #: Se a primeira palavra abre uma frase (para distinguir nome próprio).
     abre_frase: list[bool] = field(default_factory=list)
+    #: "classica", ou, na legenda "destaques", "linha" ou "pilula".
+    tipo: str = "classica"
+    #: Na legenda "destaques", o destaque de cada palavra ("" é a comum).
+    estilos: list[str] = field(default_factory=list)
 
     @property
     def texto(self) -> str:
@@ -239,6 +262,12 @@ class Plano:
     movimentos: list[Movimento] = field(default_factory=list)
     #: O quanto o adesivo empurra o zoom (0,06 = 6%).
     forca_do_empurrao: float = EMPURRAO_PADRAO
+    #: Os cartões animados (``editor/cartoes.py``), escritos pelo Gemini.
+    cartoes: list = field(default_factory=list)
+    #: O que o roteiro decidiu: as cenas de cada bloco, quem escolheu e por quê.
+    roteiro: dict = field(default_factory=dict)
+    #: Onde a voz leva bipe, no tempo do vídeo editado.
+    bipes: list[tuple[float, float]] = field(default_factory=list)
 
     def para_json(self) -> dict:
         dados = asdict(self)
@@ -291,6 +320,99 @@ def montar_blocos(palavras: Sequence[Palavra], duracao: float, teto: int) -> lis
             fim = min(duracao, ws[-1].fim + SEGURA_S + 0.1)
         blocos.append(Bloco(ws, ws[0].inicio, max(fim, ws[-1].fim), chave([w.texto for w in ws]),
                             [abre[i] for i in ids]))
+    return blocos
+
+
+def destaques_pelas_palavras(palavras: Sequence[Palavra]) -> list[tuple[int, int, str]]:
+    """Os destaques sem o Gemini: ciano nos nomes próprios (seguidos viram um só:
+    "Estados Unidos"), rosa nos números e na palavra-chave longa de cada bloco. Sem
+    pílula: a frase de efeito pede quem entenda a fala."""
+    abre = [i == 0 or palavras[i - 1].texto.rstrip().endswith(FIM_DE_FRASE)
+            for i in range(len(palavras))]
+    marcas: dict[int, str] = {}
+    for i, w in enumerate(palavras):
+        n = nua(w.texto)
+        if any(c.isdigit() for c in w.texto):
+            marcas[i] = "ciano" if marcas.get(i - 1) == "ciano" else "rosa"   # "GTA 6"
+        elif w.texto[:1].isupper() and not abre[i] and len(n) >= 3 and n not in VAZIAS:
+            marcas[i] = "ciano"
+    inicio = 0
+    for b in montar_blocos(palavras, palavras[-1].fim if palavras else 0.0, TETO_VERTICAL):
+        if b.chave >= 0 and len(nua(b.palavras[b.chave].texto)) >= 6:
+            marcas.setdefault(inicio + b.chave, "rosa")
+        inicio += len(b.palavras)
+    trechos: list[tuple[int, int, str]] = []
+    for i in sorted(marcas):
+        if trechos and trechos[-1][1] == i - 1 and trechos[-1][2] == marcas[i] == "ciano" \
+                and i - trechos[-1][0] < PAGINA_PALAVRAS:
+            trechos[-1] = (trechos[-1][0], i, "ciano")
+        else:
+            trechos.append((i, i, marcas[i]))
+    return trechos
+
+
+def montar_paginas(palavras: Sequence[Palavra], duracao: float,
+                   destaques: Sequence[tuple[int, int, str]]) -> list[Bloco]:
+    """A legenda "destaques" (``full-track.mjs`` do chat): as palavras em páginas de até
+    4, a frase de efeito numa página sozinha, e o destaque de cada palavra."""
+    n = len(palavras)
+    estilo = [""] * n
+    pilulas: dict[int, int] = {}
+    for de, ate, qual in destaques:
+        if 0 <= de <= ate < n and qual in DESTAQUES:
+            for i in range(de, ate + 1):
+                estilo[i] = qual
+            if qual == "pilula":
+                pilulas[de] = ate
+    paginas: list[list] = []                   # [tipo, primeira, última]
+    i = 0
+    while i < n:
+        if i in pilulas:
+            paginas.append(["pilula", i, pilulas[i]])
+            i = pilulas[i] + 1
+            continue
+        j, conta = i, 0
+        while j < n:
+            if j > i and j in pilulas:
+                break
+            conta += 1
+            fecha = palavras[j].texto.strip().endswith((".", ",", "!", "?", "…"))
+            dura = palavras[j].fim - palavras[i].inicio
+            folga = palavras[j + 1].inicio - palavras[j].fim if j + 1 < n else math.inf
+            j += 1
+            if (conta >= PAGINA_PALAVRAS or fecha or dura >= PAGINA_MAXIMA_S
+                    or folga > PAGINA_PAUSA_S):
+                break
+        paginas.append(["linha", i, j - 1])
+        i = j
+    # Uma ou duas palavras em menos de meio segundo piscam: juntam com a página de antes
+    # (ou com a de depois, quando a de antes é uma pílula, que fica sozinha).
+    for k in range(len(paginas) - 1, -1, -1):
+        tipo, a0, b0 = paginas[k]
+        if tipo != "linha" or b0 - a0 + 1 > 2 \
+                or palavras[b0].fim - palavras[a0].inicio >= PAGINA_CURTA_S:
+            continue
+        if k > 0 and paginas[k - 1][0] == "linha":
+            paginas[k - 1][2] = b0
+            del paginas[k]
+        elif k + 1 < len(paginas) and paginas[k + 1][0] == "linha":
+            paginas[k + 1][1] = a0
+            del paginas[k]
+    abre = [i == 0 or palavras[i - 1].texto.rstrip().endswith(FIM_DE_FRASE)
+            for i in range(n)]
+    entradas = [max(0.0, palavras[a0].inicio - PAGINA_ANTES_S) for _, a0, _ in paginas]
+    blocos = []
+    for k, (tipo, a0, b0) in enumerate(paginas):
+        ws = list(palavras[a0:b0 + 1])
+        if tipo == "pilula":            # a placa lê mal com o ponto ou a vírgula no fim
+            ws = [Palavra(w.texto.rstrip(".,;:"), w.inicio, w.fim) for w in ws]
+        # Até 30 ms antes da seguinte, mesmo que a última palavra ainda soe: a seguinte
+        # entra 80 ms antes da fala dela, e duas páginas nunca dividem a tela.
+        fim = ws[-1].fim + PAGINA_DEPOIS_S
+        fim = min(fim, entradas[k + 1] - 0.03) if k + 1 < len(paginas) else min(fim, duracao)
+        blocos.append(Bloco(ws, round(entradas[k], 3), round(max(fim, entradas[k] + 0.1), 3),
+                            chave([w.texto for w in ws]), abre[a0:b0 + 1], tipo,
+                            estilo[a0:b0 + 1]))
     return blocos
 
 
@@ -542,6 +664,27 @@ def montar_sons(adesivos: Sequence[Adesivo], icones: Sequence[Icone],
     return saida
 
 
+def com_sons_dos_cartoes(sons_: Sequence[Som], cartoes: Sequence,
+                         silencios: Sequence[tuple[float, float]] = ()) -> list[Som]:
+    """Os sons do plano com os dos cartões animados, que ganham dos outros quando caem
+    juntos; e nenhum som dentro de um bipe (os dois embolavam, no chat)."""
+    from editor import cartoes as cartoes_mod
+    from editor import sons as sons_mod
+
+    novos: list[Som] = []
+    vez: dict[str, int] = {}
+    for c in cartoes:
+        for evento, t in cartoes_mod.eventos_de_som(c):
+            nomes, ganho = sons_mod.do_cartao(evento)
+            k = vez.get(evento, 0)
+            vez[evento] = k + 1
+            novos.append(Som(nomes[k % len(nomes)], round(t, 3), ganho))
+    ficam = [s for s in sons_ if all(abs(s.t - n.t) >= SOM_ESPACO_S for n in novos)]
+    todos = sorted([*ficam, *novos], key=lambda s: s.t)
+    return [s for s in todos
+            if not any(a - 0.15 <= s.t <= b + 0.1 for a, b in silencios)]
+
+
 def montar(palavras: Sequence[Palavra], duracao: float, *, vertical: bool,
            cortes: Sequence[float], opcoes: OpcoesDeEdicao, nomes_de_icones: set[str],
            mover: bool = False) -> Plano:
@@ -552,7 +695,10 @@ def montar(palavras: Sequence[Palavra], duracao: float, *, vertical: bool,
     teto = opcoes.caracteres_por_linha or (TETO_VERTICAL if vertical else TETO_HORIZONTAL)
     ritmo = opcoes.ritmo
     blocos = montar_blocos(palavras, duracao, teto)
-    adesivos = escolher_adesivos(blocos, duracao, ritmo) if opcoes.adesivos else []
+    # Os adesivos são da legenda clássica (a palavra salta da linha); os destaques
+    # fazem esse papel na outra.
+    adesivos = (escolher_adesivos(blocos, duracao, ritmo)
+                if opcoes.adesivos and opcoes.estilo_da_legenda == "classica" else [])
     zoom = (montar_zoom(duracao, cortes if opcoes.cortes else [], blocos, opcoes.nivel_zoom,
                         ritmo) if opcoes.zoom else [(0.0, 1.0)])
     empurroes = [(a.inicio, a.fim) for a in adesivos] if opcoes.zoom else []
@@ -565,12 +711,15 @@ def montar(palavras: Sequence[Palavra], duracao: float, *, vertical: bool,
                         som_nos_cortes=opcoes.som_nos_cortes,
                         sons_por_palavra=opcoes.sons_por_palavra, ritmo=ritmo)
             if opcoes.sons else [])
+    if opcoes.estilo_da_legenda == "destaques":
+        blocos = montar_paginas(palavras, duracao, destaques_pelas_palavras(palavras))
     return Plano(round(duracao, 3), vertical, blocos, adesivos, zoom, empurroes, icones, sons,
                  [round(c, 3) for c in cortes], movimentos=movimentos,
                  forca_do_empurrao=opcoes.empurrao)
 
 
-__all__ = ["PENDURADAS", "POSICOES", "TETO_HORIZONTAL", "TETO_VERTICAL", "VAZIAS", "Adesivo",
-           "Bloco", "Icone", "Movimento", "Plano", "Som", "casar_icone", "casar_som", "chave",
+__all__ = ["DESTAQUES", "ESTILOS_DA_LEGENDA", "PENDURADAS", "POSICOES", "TETO_HORIZONTAL",
+           "TETO_VERTICAL", "VAZIAS", "Adesivo", "Bloco", "Icone", "Movimento", "Plano", "Som",
+           "casar_icone", "casar_som", "chave", "destaques_pelas_palavras",
            "escolher_adesivos", "escolher_icones", "montar", "montar_blocos",
-           "montar_movimentos", "montar_sons", "montar_zoom", "nua"]
+           "montar_movimentos", "montar_paginas", "montar_sons", "montar_zoom", "nua"]

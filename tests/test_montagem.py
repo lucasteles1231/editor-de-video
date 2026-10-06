@@ -140,8 +140,17 @@ def test_duracao_do_audio(tmp_path):
 class TestAMontagem:
     def test_problemas(self, tmp_path):
         f = tmp_path / "f.mp4"
-        assert montagem.Montagem(f).problemas()                       # nada por cima
+        assert montagem.Montagem(f).problemas() == []                 # nada por cima vale
         assert montagem.Montagem(f, pessoa=f, personagem=f).problemas()
+        # a biblioteca de cenas: no lugar do fundo, com a matriz e um áudio
+        a = tmp_path / "a.wav"
+        assert montagem.Montagem(cenas=tmp_path, matriz=f, audio=a).problemas() == []
+        assert montagem.Montagem(f, cenas=tmp_path, matriz=f, audio=a).problemas()
+        assert montagem.Montagem(cenas=tmp_path, audio=a).problemas()           # sem matriz
+        assert montagem.Montagem(cenas=tmp_path, matriz=f).problemas()          # sem áudio
+        assert montagem.Montagem(cenas=tmp_path, matriz=f, audio=a, fala="fundo").problemas()
+        partes = montagem.Montagem(cenas=tmp_path, matriz=f, audios=(a, f))
+        assert partes.problemas() == [] and partes.arquivos_da_fala() == [a, f]
         assert montagem.Montagem(f, pessoa=f, recorte="x").problemas()
         assert montagem.Montagem(f, pessoa=f, formato="redondo").problemas()
         assert montagem.Montagem(f, personagem=f, formato="vertical").problemas() == []

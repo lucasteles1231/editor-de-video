@@ -3,8 +3,8 @@
  * URL aberta pelo comando `editar` e fica guardado na aba (sessionStorage).
  */
 import type {
-  AudioInfo, Edicao, Estado, EstadoChave, EstadoIa, FotoPexels, Ideia, ImagemFundo, PersonagemInfo, RecorteInfo,
-  Saida, Tarefa, VideoInfo,
+  AudioInfo, BibliotecaInfo, Edicao, Estado, EstadoChave, EstadoIa, FotoPexels, Ideia, ImagemFundo, PersonagemInfo,
+  RecorteInfo, Saida, Tarefa, VideoInfo,
 } from './tipos';
 
 const CHAVE = 'editor-token';
@@ -59,9 +59,12 @@ function enviarArquivo<T>(rota: string, arquivo: File, aoProgresso: (fracao: num
   });
 }
 
-/** O que a página pede para montar: os ids das camadas e as escolhas. */
+/** O que a página pede para montar: os ids das camadas e as escolhas. O fundo é um vídeo
+ *  (``fundo_id``) ou a biblioteca de cenas (``biblioteca_id``); os áudios, um ou vários, na
+ *  ordem em que tocam. */
 export type PedidoDeMontagem = {
-  fundo_id: string; pessoa_id?: string; personagem_id?: string; audio_id?: string;
+  fundo_id?: string; biblioteca_id?: string; pessoa_id?: string; personagem_id?: string;
+  audio_ids?: string[];
   recorte: 'transparente' | 'modnet'; formato: string; tirar_fundo_do_personagem: boolean;
   fala: 'fundo' | 'pessoa' | 'audio';
 };
@@ -75,6 +78,16 @@ export const api = {
     enviarArquivo<PersonagemInfo>('/api/personagens', arquivo, aoProgresso),
   enviarAudio: (arquivo: File, aoProgresso: (fracao: number) => void) =>
     enviarArquivo<AudioInfo>('/api/audios', arquivo, aoProgresso),
+
+  // ── a biblioteca de cenas: abre, recebe os clipes um a um e, por fim, a matriz ──
+  novaBiblioteca: (nome: string) =>
+    pedir<{id: string; nome: string}>('/api/bibliotecas', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({nome}),
+    }),
+  enviarClipe: (biblioteca: string, arquivo: File, aoProgresso: (fracao: number) => void) =>
+    enviarArquivo<{clipes: number}>(`/api/bibliotecas/${biblioteca}/clipes`, arquivo, aoProgresso),
+  enviarMatriz: (biblioteca: string, arquivo: File) =>
+    enviarArquivo<BibliotecaInfo>(`/api/bibliotecas/${biblioteca}/matriz`, arquivo, () => undefined),
 
   /** Edita um vídeo só (``videoId``) ou a montagem em camadas. */
   criarTarefa: (alvo: {videoId: string} | {montagem: PedidoDeMontagem}, edicao: Edicao, saida: Saida,

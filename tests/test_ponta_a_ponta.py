@@ -253,3 +253,43 @@ class TestAMontagem:
                          "--fala", "pessoa"]) == 2
         assert cli.main(["--fundo", str(fundo), "--personagem", str(boneco),
                          "--fala", "audio"]) == 2             # sem --audio
+
+
+class TestABibliotecaPeloTerminal:
+    def test_cenas_matriz_e_varios_audios(self, tmp_path):
+        """``editar --cenas PASTA --matriz cenas.json --audio p1 p2 --preset noticia``."""
+        import json
+
+        from editor import cli
+        from tests.test_montagem import audio_wav, gif
+
+        pasta = tmp_path / "cenas"
+        pasta.mkdir()
+        for k in range(3):
+            fazer_video(pasta / f"c{k}.mp4", largura=320, altura=180, segundos=1.0,
+                        com_audio=False)
+        matriz = tmp_path / "cenas.json"
+        matriz.write_text(json.dumps([{"arquivo": f"c{k}.mp4", "descricao": f"cena {k}"}
+                                      for k in range(3)]), encoding="utf-8")
+        partes = [audio_wav(tmp_path / f"p{k}.wav", segundos=2.0, falas=((0.2, 1.8),))
+                  for k in (1, 2)]
+        destino = tmp_path / "noticia.mp4"
+        assert cli.main(["--cenas", str(pasta), "--matriz", str(matriz), "--audio",
+                         *map(str, partes), "--personagem", str(gif(tmp_path / "b.gif")),
+                         "--preset", "noticia", "--quadro", "vertical",
+                         "--resolucao", "480p", "-o", str(destino)]) == 0
+        info = ler_info(destino)
+        assert (info["largura"], info["altura"]) == (480, 854) or info["altura"] > info["largura"]
+        plano = json.loads(destino.with_suffix(".plano.json").read_text(encoding="utf-8"))
+        assert plano["roteiro"]["por"] == "falsa"
+        # as duas partes entraram: a primeira, aparada, tem 1,8 s; a fala passa disso
+        assert max(fim for _, fim in plano["trechos"]) > 1.8 + 0.3 + 0.5
+
+    def test_cenas_sem_matriz_explica(self, tmp_path, capsys):
+        from editor import cli
+
+        pasta = tmp_path / "cenas"
+        pasta.mkdir()
+        fazer_video(pasta / "c.mp4", largura=320, altura=180, segundos=1.0, com_audio=False)
+        assert cli.main(["--cenas", str(pasta), "--audio", str(tmp_path / "x.wav")]) != 0
+        assert "matriz" in capsys.readouterr().err

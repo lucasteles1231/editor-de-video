@@ -25,6 +25,7 @@ um jogo, slides), e não um borrão do mesmo quadro.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -73,7 +74,7 @@ ENCOSTA_EMBAIXO = 0.97
 
 #: O personagem: o teto do arquivo, dos quadros e dos pixels guardados (RGBA, uns 4 bytes
 #: cada), e o maior lado de cada quadro.
-PERSONAGEM_TETO_BYTES = 20 * 1024 * 1024
+PERSONAGEM_TETO_BYTES = 64 * 1024 * 1024
 PERSONAGEM_TETO_QUADROS = 600
 PERSONAGEM_TETO_PIXELS = 60_000_000
 PERSONAGEM_LADO_MAXIMO = 1080
@@ -92,12 +93,20 @@ BORDA_DA_COR = 30.0
 
 @dataclass
 class Montagem:
-    """O que vai em cada camada, e como."""
+    """O que vai em cada camada, e como.
 
-    fundo: Path
+    O fundo é um vídeo (``fundo``) ou uma biblioteca de cenas (``cenas``, a pasta dos
+    clipes, e ``matriz``, o catálogo): aí o fundo é montado com as cenas que combinam com
+    a fala. Por cima vai a pessoa, o personagem ou nada. O áudio separado pode vir em
+    várias partes (``audios``, um arquivo por parágrafo), juntadas na ordem."""
+
+    fundo: Path | None = None
     pessoa: Path | None = None
     personagem: Path | None = None
     audio: Path | None = None
+    cenas: Path | None = None
+    matriz: Path | None = None
+    audios: tuple[Path, ...] = ()
     #: Como tirar o fundo da pessoa: "transparente" (o alfa do arquivo) ou "modnet".
     recorte: str = "modnet"
     #: O formato do quadro final: "fundo", "vertical", "horizontal" ou "quadrado".
@@ -108,14 +117,24 @@ class Montagem:
 
     def problemas(self) -> list[str]:
         erros = []
-        if (self.pessoa is None) == (self.personagem is None):
-            erros.append("a montagem leva o vídeo da pessoa ou um personagem, um dos dois")
+        if (self.fundo is None) == (self.cenas is None):
+            erros.append("o fundo é um vídeo ou uma biblioteca de cenas, um dos dois")
+        if self.cenas is not None and self.matriz is None:
+            erros.append("a biblioteca de cenas precisa da matriz (o cenas.json)")
+        if self.pessoa is not None and self.personagem is not None:
+            erros.append("por cima vai o vídeo da pessoa ou um personagem, não os dois")
+        if self.fundo is None and self.fala == "fundo":
+            erros.append("as cenas da biblioteca não têm som: o áudio vem de um áudio "
+                         "separado ou do vídeo da pessoa")
+        if self.fundo is None and not self.arquivos_de_audio() and self.pessoa is None:
+            erros.append("com a biblioteca de cenas, mande o áudio (ou o vídeo da pessoa "
+                         "falando)")
         if self.fala is not None and self.fala not in FALAS:
             erros.append(f"o áudio vem de {', '.join(FALAS)}, e não de {self.fala}")
         if self.fala == "pessoa" and self.pessoa is None:
             erros.append("o áudio do vídeo da pessoa só existe com o vídeo da pessoa: com o "
                          "personagem, ele vem do fundo ou de um áudio separado")
-        if self.fala == "audio" and self.audio is None:
+        if self.fala == "audio" and not self.arquivos_de_audio():
             erros.append("o áudio separado foi escolhido, mas nenhum arquivo de áudio veio")
         if self.recorte not in RECORTES:
             erros.append(f"recorte desconhecido: {self.recorte} (use {' ou '.join(RECORTES)})")
@@ -128,20 +147,28 @@ class Montagem:
         vídeo da pessoa, se ele tiver som; senão o fundo)."""
         if self.fala is not None:
             return self.fala
-        if self.audio is not None:
+        if self.arquivos_de_audio():
             return "audio"
         if self.pessoa is not None and video_mod.sondar(Path(self.pessoa)).tem_audio:
             return "pessoa"
         return "fundo"
 
+    def arquivos_de_audio(self) -> list[Path]:
+        """O áudio separado: as partes, ou o arquivo único."""
+        return [Path(a) for a in self.audios] or ([Path(self.audio)] if self.audio else [])
+
     def fonte_da_fala(self) -> Path:
-        """O arquivo de onde vem o áudio."""
+        """O arquivo de onde vem o áudio (a primeira parte, com várias)."""
+        return self.arquivos_da_fala()[0]
+
+    def arquivos_da_fala(self) -> list[Path]:
+        """Os arquivos de onde vem o áudio, em ordem."""
         tipo = self.tipo_da_fala()
-        if tipo == "audio" and self.audio is not None:
-            return Path(self.audio)
+        if tipo == "audio" and self.arquivos_de_audio():
+            return self.arquivos_de_audio()
         if tipo == "pessoa" and self.pessoa is not None:
-            return Path(self.pessoa)
-        return Path(self.fundo)
+            return [Path(self.pessoa)]
+        return [Path(self.fundo)] if self.fundo is not None else self.arquivos_de_audio()
 
 
 # ── o quadro final ───────────────────────────────────────────────────────
@@ -249,7 +276,7 @@ def ler_personagem(caminho: Path, *, tirar_fundo: bool = True,
     """Os quadros de um GIF, PNG animado ou WebP, em RGBA."""
     caminho = Path(caminho)
     if caminho.stat().st_size > PERSONAGEM_TETO_BYTES:
-        raise PersonagemInvalido("O personagem passa de 20 MB.")
+        raise PersonagemInvalido("O personagem passa de 64 MB.")
     try:
         img = Image.open(caminho)
         img.load()
@@ -436,25 +463,46 @@ def alvo(posicao: str, de_casa: Transformacao, camada: Camada, largura: int, alt
 # ── o quadro composto ────────────────────────────────────────────────────
 
 
+def camada_da_montagem(montagem: Montagem) -> Camada | None:
+    """O que vai por cima: o personagem, a pessoa (sem fundo ou recortada) ou nada."""
+    if montagem.personagem is not None:
+        return CamadaDePersonagem(ler_personagem(
+            montagem.personagem, tirar_fundo=montagem.tirar_fundo_do_personagem))
+    if montagem.pessoa is None:
+        return None
+    info = video_mod.sondar(montagem.pessoa)
+    return (CamadaComAlfa(montagem.pessoa, info) if montagem.recorte == "transparente"
+            else CamadaRecortada(montagem.pessoa, info))
+
+
+def falando(falas: Sequence[tuple[float, float]], t: float) -> bool:
+    """Se há fala em ``t`` (40 ms antes e 60 ms depois, como no chat do canal)."""
+    return any(a - 0.04 <= t <= b + 0.06 for a, b in falas)
+
+
 class Montador:
-    """Compõe cada quadro: o fundo encaixado e, por cima, a pessoa ou o personagem."""
+    """Compõe cada quadro: o fundo encaixado e, por cima, a pessoa ou o personagem.
+
+    O fundo é o vídeo da montagem ou, com a biblioteca de cenas, o ``fundo`` dado (um
+    ``cenas.FundoDeCenas``, que anda no tempo do vídeo editado). Com ``falas``, o
+    personagem só mexe a boca enquanto alguém fala."""
 
     def __init__(self, montagem: Montagem, plano: Plano, largura: int, altura: int,
-                 info_do_fundo: video_mod.Info, *, mover: bool = True):
+                 info_do_fundo: video_mod.Info | None, *, mover: bool = True, fundo=None,
+                 fundo_na_saida: bool = False, camada: Camada | str | None = "montagem",
+                 falas: Sequence[tuple[float, float]] = ()):
         self.largura, self.altura = largura, altura
-        self.fundo = video_mod.Cursor(montagem.fundo, info_do_fundo.rotacao,
-                                      duracao=info_do_fundo.duracao)
-        self.caixa_do_fundo = encaixe(info_do_fundo.largura, info_do_fundo.altura,
-                                      largura, altura)
-        if montagem.personagem is not None:
-            self.camada: Camada = CamadaDePersonagem(ler_personagem(
-                montagem.personagem, tirar_fundo=montagem.tirar_fundo_do_personagem))
+        if fundo is None:
+            fundo = video_mod.Cursor(montagem.fundo, info_do_fundo.rotacao,
+                                     duracao=info_do_fundo.duracao)
+            medidas = (info_do_fundo.largura, info_do_fundo.altura)
         else:
-            info = video_mod.sondar(montagem.pessoa)
-            self.camada = (CamadaComAlfa(montagem.pessoa, info)
-                           if montagem.recorte == "transparente"
-                           else CamadaRecortada(montagem.pessoa, info))
-        self.casa = casa(self.camada, largura, altura)
+            medidas = (fundo.largura, fundo.altura)
+        self.fundo, self.fundo_na_saida = fundo, fundo_na_saida
+        self.caixa_do_fundo = encaixe(*medidas, largura, altura)
+        self.camada = camada_da_montagem(montagem) if camada == "montagem" else camada
+        self.falas = list(falas)
+        self.casa = casa(self.camada, largura, altura) if self.camada is not None else None
         self.movimentos = sorted(plano.movimentos, key=lambda m: m.inicio) if mover else []
         self._alvos: dict[int, Transformacao] = {}
         self._rampas: dict[tuple, np.ndarray | None] = {}
@@ -495,6 +543,8 @@ class Montador:
 
     def lado_livre(self, t: float) -> int:
         """O lado que a camada deixou livre para o ícone (-1 esquerda, 1 direita, 0)."""
+        if self.camada is None:
+            return 0
         achado = self.em(t)
         if achado is None:
             return 0
@@ -510,10 +560,12 @@ class Montador:
                                          dict.fromkeys(somem, True)) if somem else None)
         return self._rampas[somem]
 
-    def tela_do_fundo(self, t_origem: float, nivel: float = 1.0) -> Image.Image:
+    def tela_do_fundo(self, t_origem: float, nivel: float = 1.0, t_saida: float | None = None
+                      ) -> Image.Image:
         from editor.render import janela
 
-        q = self.fundo.em(t_origem)
+        q = self.fundo.em(t_saida if self.fundo_na_saida and t_saida is not None
+                          else t_origem)
         img = Image.fromarray(q) if q is not None else Image.new(
             "RGB", (self.largura, self.altura))
         x, y, w, h = self.caixa_do_fundo
@@ -527,8 +579,14 @@ class Montador:
 
     def quadro(self, t_origem: float, t_saida: float, *, nivel: float = 1.0,
                extra: float = 0.0) -> Image.Image:
-        tela = self.tela_do_fundo(t_origem, nivel).convert("RGBA")
-        rgba = self.camada.rgba(t_origem, t_saida)
+        tela = self.tela_do_fundo(t_origem, nivel, t_saida).convert("RGBA")
+        if self.camada is None:
+            return tela.convert("RGB")
+        if (isinstance(self.camada, CamadaDePersonagem) and self.falas
+                and not falando(self.falas, t_saida)):
+            rgba = self.camada.personagem.quadros[0]       # a boca fechada, nas pausas
+        else:
+            rgba = self.camada.rgba(t_origem, t_saida)
         tr = self.transformacao(t_saida, extra)
         r = self._rampa(tr)
         if r is not None:
@@ -540,5 +598,6 @@ class Montador:
 
 __all__ = ["FALAS", "FORMATOS", "RECORTES", "Camada", "CamadaComAlfa", "CamadaDePersonagem",
            "CamadaRecortada", "Montador", "Montagem", "Personagem", "PersonagemInvalido",
-           "alvo", "casa", "cor_do_fundo", "encaixe", "ler_personagem", "sobras",
+           "alvo", "camada_da_montagem", "casa", "cor_do_fundo", "encaixe", "falando",
+           "ler_personagem", "sobras",
            "tamanho_do_quadro", "tirar_fundo_de_cor"]

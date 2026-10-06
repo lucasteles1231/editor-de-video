@@ -1,6 +1,7 @@
 /**
  * De onde vem o áudio da montagem: do vídeo de fundo, do vídeo da pessoa ou de um áudio
- * separado. Com o personagem, que não tem som, só do fundo ou do separado.
+ * separado (um ou vários). Com o personagem, que não tem som, só do fundo ou do separado;
+ * com a biblioteca de cenas (o som dos clipes não é a fala), só da pessoa ou do separado.
  *
  * A escolha de quem edita vale enquanto ela fizer sentido. Sem escolha (ou com uma que
  * não serve mais, como "a pessoa" depois de trocar para o personagem), vale a primeira
@@ -13,16 +14,22 @@ import type {AudioInfo, Fala, MontagemConfig, VideoInfo} from './tipos';
 export const semSom = (v: VideoInfo | null) => Boolean(v && !v.tem_audio);
 
 export function opcoesDeFala(m: MontagemConfig): Fala[] {
-  return m.porCima === 'pessoa' ? ['fundo', 'pessoa', 'audio'] : ['fundo', 'audio'];
+  const fundo: Fala[] = m.fonteDoFundo === 'cenas' ? [] : ['fundo'];
+  return m.porCima === 'pessoa' ? [...fundo, 'pessoa', 'audio'] : [...fundo, 'audio'];
 }
 
 export function falaEfetiva(m: MontagemConfig, fundo: VideoInfo | null, pessoa: VideoInfo | null,
-                            audio: AudioInfo | null): Fala {
+                            audios: AudioInfo[]): Fala {
   const pode = (f: Fala) => opcoesDeFala(m).includes(f)
     && (f === 'fundo' ? !semSom(fundo) : f === 'pessoa' ? !semSom(pessoa) : true);
   if (m.fala && pode(m.fala)) return m.fala;
   if (m.porCima === 'pessoa' && pessoa?.tem_audio) return 'pessoa';
-  if (fundo?.tem_audio) return 'fundo';
-  if (audio) return 'audio';
+  if (m.fonteDoFundo !== 'cenas' && fundo?.tem_audio) return 'fundo';
+  if (audios.length || m.fonteDoFundo === 'cenas') return 'audio';
   return 'fundo';
 }
+
+/** Os áudios na ordem em que tocam: a do nome, com os números em ordem ("Parte 2" antes
+ *  de "Parte 10"). */
+export const emOrdem = (lista: AudioInfo[]) =>
+  [...lista].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', {numeric: true, sensitivity: 'base'}));

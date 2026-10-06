@@ -406,6 +406,27 @@ def _perguntar(chave_: str, sistema: str, pedido: str, imagens: Sequence[bytes],
                    + "). Tente de novo em alguns minutos.")
 
 
+def perguntar_json(sistema: str, pedido: str, esquema_: dict, *, temperatura: float,
+                   transporte=None, gasto: list[str] | None = None) -> tuple[dict, str]:
+    """Um pedido só de texto, com a chave salva, descendo a escada de modelos (usado pelo
+    roteiro do vídeo: as cenas e os cartões). Levanta :class:`ErroDaIA` sem chave."""
+    valor, _origem = chave()
+    if not valor:
+        raise ErroDaIA("Falta a chave do Gemini: cole a sua no passo 5 "
+                       f"(crie uma em {ONDE_PEGAR_A_CHAVE}).")
+    return _perguntar(valor, sistema, pedido, [], esquema_, temperatura=temperatura,
+                      transporte=transporte, gasto=gasto)
+
+
+def ligada() -> bool:
+    """Se dá para pedir ao Gemini agora: a chave existe (ou a IA é a falsa dos testes)."""
+    return _falsa() or bool(chave()[0])
+
+
+def falsa() -> bool:
+    return _falsa()
+
+
 # ── o pedido ─────────────────────────────────────────────────────────────
 
 
@@ -944,12 +965,15 @@ __all__ = [
     "conferir",
     "esquema",
     "estado",
+    "falsa",
     "formula_gasta",
     "geracoes_restantes",
     "gerar_fundo",
+    "ligada",
     "limpar_chave",
     "mascarada",
     "montar_pedido",
+    "perguntar_json",
     "salvar_chave",
     "sugerir",
     "validar_chave",

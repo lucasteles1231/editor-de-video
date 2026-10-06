@@ -4,7 +4,7 @@
 import React from 'react';
 import {api} from '../api';
 import {duracao, numero} from '../formatar';
-import type {Tarefa, VideoInfo} from '../tipos';
+import type {Resultado, Tarefa, VideoInfo} from '../tipos';
 
 const ETAPAS = ['transcrevendo', 'cortando', 'desenhando', 'finalizando'];
 const NOMES: Record<string, string> = {
@@ -29,6 +29,18 @@ type Props = {
   gerandoThumbs: boolean;
   pastaSaida: string;
 };
+
+/** Quem escreveu o roteiro (as cenas, os cartões e os destaques da legenda) e quanto. */
+export function textoDoRoteiro(r: Resultado['roteiro']): string {
+  if (!r || !('por' in r) || !r.por) return '';
+  const partes = [r.cenas ? `${r.cenas} cenas` : '', r.cartoes ? `${r.cartoes} cartões` : ''].filter(Boolean);
+  const oQue = partes.length ? partes.join(' e ') : 'os destaques da legenda';
+  if (r.por === 'gemini') {
+    return `Roteiro do Gemini: ${oQue} (${r.pedidos} ${r.pedidos === 1 ? 'pedido' : 'pedidos'} da cota grátis).`;
+  }
+  if (r.por === 'falsa') return `Roteiro da IA de teste: ${oQue}.`;
+  return r.aviso ? `${r.aviso.charAt(0).toUpperCase()}${r.aviso.slice(1)}.` : '';
+}
 
 function mostrar(el: HTMLElement | null, block: ScrollLogicalPosition): void {
   const calmo = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -128,6 +140,9 @@ export const Painel: React.FC<Props> = (p) => {
               <div><b>{duracao(t.resultado!.duracao_final)}</b><span>depois</span></div>
               <div><b>{duracao(t.resultado!.segundos)}</b><span>para editar</span></div>
             </div>
+            {textoDoRoteiro(t.resultado!.roteiro) ? (
+              <p className="roteiro">{textoDoRoteiro(t.resultado!.roteiro)}</p>
+            ) : null}
             <div className="downloads">
               <a className="botao pequeno" href={api.arquivoUrl(t.id, 'video')}>Baixar o vídeo</a>
               {t.resultado!.legendas.map((l) => {

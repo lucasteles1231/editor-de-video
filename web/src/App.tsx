@@ -1,6 +1,6 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {api} from './api';
-import {falaEfetiva} from './fala';
+import {emOrdem, falaEfetiva} from './fala';
 import {
   ORDEM, type Plataforma, avisos, quadroDe, recomendadas, tamanhosDe,
 } from './plataformas';
@@ -12,15 +12,27 @@ import {PROPORCAO} from './componentes/thumb/AbaFundo';
 import {gerarPng} from './thumb/exportar';
 import {carregarFonte} from './thumb/medida';
 import type {
-  AudioInfo, Camadas, Edicao, Estado, EstadoChave, EstadoIa, Ideia, Modo, MontagemConfig, PersonagemInfo, Preset,
-  RecorteInfo, Saida, Tarefa, ThumbConfig, VideoInfo,
+  AudioInfo, BibliotecaInfo, Camadas, Edicao, Estado, EstadoChave, EstadoIa, Ideia, Modo, MontagemConfig,
+  PersonagemInfo, Preset, RecorteInfo, Saida, Tarefa, ThumbConfig, VideoInfo,
 } from './tipos';
 import {comecarTour, tourJaVisto} from './tour';
 
-const MONTAGEM_PADRAO: MontagemConfig = {porCima: 'pessoa', recorte: 'modnet', formato: 'fundo', tirarFundo: true,
-  fala: null};
-const NADA_ENVIANDO: Record<Envio, number | null> = {video: null, fundo: null, pessoa: null, personagem: null, audio: null};
-const SEM_ERRO: Record<Envio, string> = {video: '', fundo: '', pessoa: '', personagem: '', audio: ''};
+const MONTAGEM_PADRAO: MontagemConfig = {fonteDoFundo: 'video', porCima: 'pessoa', recorte: 'modnet', formato: 'fundo',
+  tirarFundo: true, fala: null};
+const NADA_ENVIANDO: Record<Envio, number | null> = {video: null, fundo: null, pessoa: null, personagem: null, audio: null,
+  biblioteca: null};
+const SEM_ERRO: Record<Envio, string> = {video: '', fundo: '', pessoa: '', personagem: '', audio: '', biblioteca: ''};
+
+/** Os vídeos que a biblioteca aceita (``editor/cenas.py``). */
+const CLIPE = /\.(mp4|mov|m4v|webm|mkv)$/i;
+/** Quantos clipes sobem ao mesmo tempo. */
+const CLIPES_JUNTOS = 3;
+
+/** A matriz que veio junto na pasta: o ``cenas.json``, ou o único JSON dela. */
+function matrizDaPasta(arquivos: File[]): File | null {
+  const jsons = arquivos.filter((f) => /\.json$/i.test(f.name) && !f.name.startsWith('.'));
+  return jsons.find((f) => f.name.toLowerCase() === 'cenas.json') ?? (jsons.length === 1 ? jsons[0] : null);
+}
 
 const THUMB_PADRAO: ThumbConfig = {
   ativo: true, texto: '', destaque: -1, t: 0, icone: '', modelo: 'classico', cor: 'amarelo', selo: '',
@@ -95,7 +107,11 @@ export const App: React.FC = () => {
   const [pessoa, setPessoa] = useState<VideoInfo | null>(null);
   const [personagem, setPersonagem] = useState<PersonagemInfo | null>(null);
   const [recorteDoPersonagem, setRecorteDoPersonagem] = useState<RecorteInfo | null>(null);
-  const [audio, setAudio] = useState<AudioInfo | null>(null);
+  const [audios, setAudios] = useState<AudioInfo[]>([]);
+  const [biblioteca, setBiblioteca] = useState<BibliotecaInfo | null>(null);
+  // A pasta já subiu (e falta a matriz): o id da biblioteca aberta no servidor.
+  const [bibliotecaAberta, setBibliotecaAberta] = useState<string | null>(null);
+  const [enviandoBiblioteca, setEnviandoBiblioteca] = useState<string | null>(null);
   const [montagem, setMontagem] = useState<MontagemConfig>(MONTAGEM_PADRAO);
   const [envios, setEnvios] = useState(NADA_ENVIANDO);
   const [errosDeEnvio, setErrosDeEnvio] = useState(SEM_ERRO);
@@ -127,20 +143,24 @@ export const App: React.FC = () => {
   // de onde saem os quadros de trás dele).
   const naMontagem = modo === 'montagem';
   const comPersonagem = naMontagem && montagem.porCima === 'personagem';
-  const video = !naMontagem ? unico : comPersonagem ? fundo : pessoa;
+  // O fundo da montagem: o vídeo, ou a capa da biblioteca de cenas (uma cena forte dela).
+  const comCenas = montagem.fonteDoFundo === 'cenas';
+  const fundoEfetivo = comCenas ? biblioteca?.capa ?? null : fundo;
+  const video = !naMontagem ? unico : montagem.porCima === 'pessoa' ? pessoa : fundoEfetivo;
   const camadas: Camadas | null = useMemo(() => (!naMontagem ? null : {
-    fundo,
+    fundo: fundoEfetivo,
     personagem: comPersonagem && personagem
       ? {info: personagem, recorte: recorteDoPersonagem, tirarFundo: montagem.tirarFundo} : null,
-  }), [naMontagem, comPersonagem, fundo, personagem, recorteDoPersonagem, montagem.tirarFundo]);
-  const fala = falaEfetiva(montagem, fundo, pessoa, audio);
+  }), [naMontagem, comPersonagem, fundoEfetivo, personagem, recorteDoPersonagem, montagem.tirarFundo]);
+  const fala = falaEfetiva(montagem, comCenas ? null : fundo, pessoa, audios);
   // A recomendação sai do vídeo principal: o único, ou o fundo da montagem.
-  const videoPrincipal = naMontagem ? fundo : unico;
+  const videoPrincipal = naMontagem ? fundoEfetivo : unico;
   const recomendacao = useMemo(() => recomendadas(videoPrincipal), [videoPrincipal]);
   const plataformas: Plataforma[] = plataformasEscolhidas ?? (recomendacao.length ? recomendacao : ['youtube']);
   const chaveDasPlataformas = plataformas.join(',');
+  const porCimaPronto = montagem.porCima === 'nada' || Boolean(comPersonagem ? personagem : pessoa);
   const podeEditar = !naMontagem ? Boolean(unico)
-    : Boolean(fundo && (comPersonagem ? personagem : pessoa) && (fala !== 'audio' || audio));
+    : Boolean(fundoEfetivo && porCimaPronto && (fala !== 'audio' || audios.length));
   const pararDeAcompanhar = useRef<(() => void) | null>(null);
   const recortesPedidos = useRef(new Set<string>());
   const thumbAtual = useRef(thumb);
@@ -241,16 +261,7 @@ export const App: React.FC = () => {
       api.enviarPersonagem(arquivo, progresso).then(setPersonagem).catch(falhou).finally(fim);
       return;
     }
-    if (qual === 'audio') {
-      // O áudio separado que chega passa a ser a escolha.
-      api.enviarAudio(arquivo, progresso)
-        .then((a) => {
-          setAudio(a);
-          setMontagem((m) => ({...m, fala: 'audio'}));
-        })
-        .catch(falhou).finally(fim);
-      return;
-    }
+
     api.enviar(arquivo, progresso)
       .then((v) => {
         if (qual === 'video') {
@@ -270,18 +281,89 @@ export const App: React.FC = () => {
       .finally(fim);
   }, [montagem.porCima, novoQuadroDaThumb]);
 
+  /** Os áudios separados (um ou vários, um por parágrafo): sobem um a um e tocam na ordem
+   *  do nome. O que chega passa a ser a escolha. */
+  const escolherAudios = useCallback(async (arquivos: File[]) => {
+    setErrosDeEnvio((e) => ({...e, audio: ''}));
+    setTarefa(null);
+    const lista = emOrdem(arquivos.map((f) => ({id: '', nome: f.name, tamanho_bytes: f.size, duracao: 0})))
+      .map((a) => arquivos.find((f) => f.name === a.nome)!);
+    try {
+      for (const [k, arquivo] of lista.entries()) {
+        const a = await api.enviarAudio(arquivo, (f) => setEnvios((e) => ({...e, audio: (k + f) / lista.length})));
+        setAudios((atuais) => emOrdem([...atuais.filter((x) => x.nome !== a.nome), a]));
+      }
+      setMontagem((m) => ({...m, fala: 'audio'}));
+    } catch (e) {
+      setErrosDeEnvio((x) => ({...x, audio: (e as Error).message}));
+    } finally {
+      setEnvios((e) => ({...e, audio: null}));
+    }
+  }, []);
+
+  /** A matriz da biblioteca aberta: devolve a ficha e a capa, de onde a thumbnail tira os quadros. */
+  const enviarMatriz = useCallback(async (id: string, arquivo: File) => {
+    setEnviandoBiblioteca('Lendo a matriz…');
+    try {
+      const b = await api.enviarMatriz(id, arquivo);
+      setBiblioteca(b);
+      if (montagem.porCima !== 'pessoa') novoQuadroDaThumb(b.capa);
+    } catch (e) {
+      setErrosDeEnvio((x) => ({...x, biblioteca: (e as Error).message}));
+    } finally {
+      setEnviandoBiblioteca(null);
+    }
+  }, [montagem.porCima, novoQuadroDaThumb]);
+
+  /** A pasta das cenas: os vídeos dela sobem (três de cada vez) e, se a matriz veio junto,
+   *  ela também. Sem matriz na pasta, a página pede a matriz em seguida. */
+  const escolherPasta = useCallback(async (arquivos: File[]) => {
+    setErrosDeEnvio((e) => ({...e, biblioteca: ''}));
+    setTarefa(null);
+    setBiblioteca(null);
+    setBibliotecaAberta(null);
+    const clipes = arquivos.filter((f) => CLIPE.test(f.name) && !f.name.startsWith('.'));
+    if (!clipes.length) {
+      setErrosDeEnvio((e) => ({...e, biblioteca: 'Nenhum vídeo nesta pasta (MP4, MOV, WebM, MKV).'}));
+      return;
+    }
+    const caminho = (arquivos[0] as File & {webkitRelativePath?: string}).webkitRelativePath ?? '';
+    try {
+      const {id} = await api.novaBiblioteca(caminho.split('/')[0] || 'cenas');
+      let feitos = 0;
+      setEnviandoBiblioteca(`Enviando 0 de ${clipes.length} clipes…`);
+      const fila = [...clipes];
+      await Promise.all(Array.from({length: Math.min(CLIPES_JUNTOS, fila.length)}, async () => {
+        for (let f = fila.shift(); f; f = fila.shift()) {
+          await api.enviarClipe(id, f, () => undefined);
+          feitos += 1;
+          setEnviandoBiblioteca(`Enviando ${feitos} de ${clipes.length} clipes…`);
+        }
+      }));
+      setBibliotecaAberta(id);
+      const matriz = matrizDaPasta(arquivos);
+      if (matriz) await enviarMatriz(id, matriz);
+    } catch (e) {
+      setErrosDeEnvio((x) => ({...x, biblioteca: (e as Error).message}));
+    } finally {
+      setEnviandoBiblioteca(null);
+    }
+  }, [enviarMatriz]);
+
   const mudarMontagem = (p: Partial<MontagemConfig>) => {
     setMontagem((m) => ({...m, ...p}));
-    // Trocar o que vai por cima troca o vídeo da thumbnail.
-    if (p.porCima && p.porCima !== montagem.porCima) {
-      const v = p.porCima === 'personagem' ? fundo : pessoa;
+    // Trocar o que vai por cima (ou o fundo) troca o vídeo da thumbnail.
+    const porCima = p.porCima ?? montagem.porCima;
+    const fonte = p.fonteDoFundo ?? montagem.fonteDoFundo;
+    if (porCima !== montagem.porCima || fonte !== montagem.fonteDoFundo) {
+      const v = porCima === 'pessoa' ? pessoa : fonte === 'cenas' ? biblioteca?.capa ?? null : fundo;
       if (v) novoQuadroDaThumb(v);
     }
   };
 
   const trocarModo = (m: Modo) => {
     setModo(m);
-    const v = m === 'um' ? unico : montagem.porCima === 'personagem' ? fundo : pessoa;
+    const v = m === 'um' ? unico : montagem.porCima === 'pessoa' ? pessoa : fundoEfetivo;
     if (v) novoQuadroDaThumb(v);
   };
 
@@ -369,11 +451,11 @@ export const App: React.FC = () => {
     setIdeias([]);
     setErroIa('');
     pararDeAcompanhar.current?.();
-    const alvo = !naMontagem || !fundo ? {videoId: video.id} : {montagem: {
-      fundo_id: fundo.id,
+    const alvo = !naMontagem || !fundoEfetivo ? {videoId: video.id} : {montagem: {
+      ...(comCenas && biblioteca ? {biblioteca_id: biblioteca.id} : {fundo_id: fundoEfetivo.id}),
       ...(comPersonagem && personagem ? {personagem_id: personagem.id} : {}),
-      ...(!comPersonagem && pessoa ? {pessoa_id: pessoa.id} : {}),
-      ...(fala === 'audio' && audio ? {audio_id: audio.id} : {}),
+      ...(montagem.porCima === 'pessoa' && pessoa ? {pessoa_id: pessoa.id} : {}),
+      ...(fala === 'audio' && audios.length ? {audio_ids: audios.map((a) => a.id)} : {}),
       recorte: montagem.recorte, formato: montagem.formato, tirar_fundo_do_personagem: montagem.tirarFundo,
       fala,
     }};
@@ -387,8 +469,8 @@ export const App: React.FC = () => {
     } catch (e) {
       setErroEdicao((e as Error).message);
     }
-  }, [video, edicao, saida, previa, quandoTerminar, podeEditar, naMontagem, fundo, comPersonagem, personagem,
-    pessoa, audio, montagem, camadas, fala]);
+  }, [video, edicao, saida, previa, quandoTerminar, podeEditar, naMontagem, fundoEfetivo, comCenas, biblioteca,
+    comPersonagem, personagem, pessoa, audios, montagem, camadas, fala]);
 
   const marcado = useMemo(() => (estado && edicao && saida ? presetMarcado(estado.presets, edicao, saida) : null),
     [estado, edicao, saida]);
@@ -470,15 +552,16 @@ export const App: React.FC = () => {
   } : null;
 
   // Na prévia do painel: o recorte da pessoa num quadro dela, ou o personagem.
-  const porCimaDoPainel = !naMontagem || !fundo ? null
+  const emPe = montagem.formato === 'vertical' || (montagem.formato === 'fundo' && Boolean(fundoEfetivo?.vertical));
+  const porCimaDoPainel = !naMontagem || !fundoEfetivo ? null
     : comPersonagem && personagem ? {
       url: montagem.tirarFundo && !personagem.tem_alfa ? api.personagemQuadroUrl(personagem.id, true)
         : api.personagemArquivoUrl(personagem.id),
-      emPe: montagem.formato === 'vertical' || (montagem.formato === 'fundo' && fundo.vertical)}
-      : !comPersonagem && pessoa ? {
+      emPe}
+      : montagem.porCima === 'pessoa' && pessoa ? {
         url: montagem.recorte === 'transparente' || estado?.recorte.baixado
           ? api.recorteUrl(pessoa.id, Math.min(1, pessoa.duracao / 2), 480) : api.quadroUrl(pessoa.id, 1, 480),
-        emPe: montagem.formato === 'vertical' || (montagem.formato === 'fundo' && fundo.vertical)}
+        emPe}
         : null;
 
   return (
@@ -505,8 +588,13 @@ export const App: React.FC = () => {
               tudo feito aqui no seu computador.</p>
           </div>
           <PassoEnvio modo={modo} setModo={trocarModo} video={unico} fundo={fundo} pessoa={pessoa}
-            personagem={personagem} audio={audio} montagem={montagem} mudarMontagem={mudarMontagem}
-            progresso={envios} erro={errosDeEnvio} aoEscolher={escolherArquivo} aoTirarAudio={() => setAudio(null)}
+            personagem={personagem} audios={audios} biblioteca={biblioteca}
+            faltaMatriz={Boolean(bibliotecaAberta && !biblioteca)} enviandoBiblioteca={enviandoBiblioteca}
+            montagem={montagem} mudarMontagem={mudarMontagem}
+            progresso={envios} erro={errosDeEnvio} aoEscolher={escolherArquivo}
+            aoEscolherAudios={(a) => void escolherAudios(a)} aoEscolherPasta={(a) => void escolherPasta(a)}
+            aoEscolherMatriz={(f) => bibliotecaAberta && void enviarMatriz(bibliotecaAberta, f)}
+            aoTirarAudio={() => setAudios([])}
             recorte={estado?.recorte ?? {baixado: true, tamanho: ''}}
             plataformas={plataformas} recomendadas={recomendacao} aoAlternarPlataforma={alternarPlataforma}
             avisosDaPlataforma={avisos(plataformas, videoPrincipal, naMontagem)} />
@@ -514,10 +602,12 @@ export const App: React.FC = () => {
             <>
               <PassoEdicoes edicao={edicao} mudar={(p) => setEdicao({...edicao, ...p})}
                 porCima={naMontagem ? montagem.porCima : null} presets={estado.presets} marcado={marcado}
-                aoEscolherPreset={escolherPreset} temas={estado.temas_dos_sons} />
+                aoEscolherPreset={escolherPreset} temas={estado.temas_dos_sons} naMontagem={naMontagem} />
               <PassoLegenda estado={estado} edicao={edicao} saida={saida}
                 mudar={(p) => setEdicao({...edicao, ...p})} mudarSaida={(p) => setSaida({...saida, ...p})} />
-              <PassoSaida estado={estado} saida={saida} video={naMontagem ? fundo : unico}
+              {/* A biblioteca sai em 1920 × 1080, qualquer que seja o tamanho dos clipes: ela
+                  não limita a resolução. */}
+              <PassoSaida estado={estado} saida={saida} video={!naMontagem ? unico : comCenas ? null : fundo}
                 mudar={(p) => setSaida({...saida, ...p})}
                 quadro={naMontagem ? {valor: montagem.formato, mudar: (f) => mudarMontagem({formato: f})} : null} />
               <ThumbPasso video={video} config={thumb} mudar={(p) => setThumb((t) => ({...t, ...p}))}
@@ -528,7 +618,7 @@ export const App: React.FC = () => {
             </>
           ) : null}
         </div>
-        <Painel video={naMontagem ? fundo : unico} porCima={porCimaDoPainel} podeEditar={podeEditar}
+        <Painel video={naMontagem ? fundoEfetivo : unico} porCima={porCimaDoPainel} podeEditar={podeEditar}
           tarefa={tarefa} previa={previa} setPrevia={setPrevia} aoEditar={editar}
           aoCancelar={() => tarefa && api.cancelar(tarefa.id)} erro={erroEdicao} thumbs={thumbs}
           gerandoThumbs={gerandoThumbs} pastaSaida={estado?.pasta_saida ?? ''} />

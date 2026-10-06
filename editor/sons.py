@@ -111,6 +111,14 @@ def ganho_do_evento(evento: str) -> float:
     return float(catalogo()["ganhos"].get(evento, 1.0))
 
 
+def do_cartao(evento: str) -> tuple[list[str], float]:
+    """Os sons de um evento dos cartões animados ("item", "erro", "boom"…) e o ganho
+    deles: os do vídeo do chat (whoosh, erro, boom, clique, obturador e ding)."""
+    cartoes = catalogo()["cartoes"]
+    c = cartoes.get(evento) or cartoes["selo"]
+    return list(c["sons"]), float(c.get("ganho", 1.0))
+
+
 def _arquivo(nome: str):
     return files("editor") / "recursos" / "sons" / f"{nome}.ogg"
 
@@ -262,6 +270,7 @@ def demonstracao(tema: str, taxa: int, volume: float = 1.0) -> np.ndarray:
     return trilha(sons, t + 0.4, taxa, volume)
 
 
-__all__ = ["GANHO", "VOZES", "amostras", "catalogo", "demonstracao", "do_tema", "existe",
+__all__ = ["GANHO", "VOZES", "amostras", "catalogo", "demonstracao", "do_cartao", "do_tema",
+           "existe",
            "ganho_do_evento", "misturar", "pop", "temas", "trilha", "volume_percebido",
            "whoosh"]

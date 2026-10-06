@@ -7,8 +7,8 @@ import {falaEfetiva, opcoesDeFala, semSom} from '../fala';
 import {ORDEM, PLATAFORMAS, type Plataforma, juntar} from '../plataformas';
 import {bytes, duracao, numero} from '../formatar';
 import type {
-  AudioInfo, Edicao, Estado, Fala, FormatoDoQuadro, Modo, MontagemConfig, PersonagemInfo, PorCima, Preset, Saida,
-  VideoInfo,
+  AudioInfo, BibliotecaInfo, Edicao, EstiloDaLegenda, Estado, Fala, FonteDoFundo, FormatoDoQuadro, Modo,
+  MontagemConfig, PersonagemInfo, PorCima, Preset, Saida, VideoInfo, Voz,
 } from '../tipos';
 import {Interruptor} from './Interruptor';
 
@@ -25,7 +25,7 @@ const Cabeca: React.FC<{n: number; titulo: string; texto: string}> = ({n, titulo
 // ── 1. Enviar ────────────────────────────────────────────────────────────
 
 /** O que se envia: o vídeo único ou uma das camadas da montagem. */
-export type Envio = 'video' | 'fundo' | 'pessoa' | 'personagem' | 'audio';
+export type Envio = 'video' | 'fundo' | 'pessoa' | 'personagem' | 'audio' | 'biblioteca';
 
 /** O custo de recortar a pessoa no vídeo inteiro pelo MODNet, medido num Apple M5 em
  *  04/10/2026: uns 0,07 s por quadro (um vídeo de 27 s a 25 fps levou uns 31 s a mais). */
@@ -34,14 +34,20 @@ const CUSTO_DO_RECORTE_POR_QUADRO = 0.07;
 const Soltar: React.FC<{
   rotulo: string; dica: string; aceita: string; progresso: number | null;
   aoEscolher: (arquivo: File) => void; grande?: boolean; nome: string;
-}> = ({rotulo, dica, aceita, progresso, aoEscolher, grande, nome}) => {
+  /** Aceita vários de uma vez (os áudios, um por parágrafo). */
+  aoEscolherVarios?: (arquivos: File[]) => void;
+}> = ({rotulo, dica, aceita, progresso, aoEscolher, grande, nome, aoEscolherVarios}) => {
   const entrada = useRef<HTMLInputElement>(null);
   const [arrastando, setArrastando] = useState(false);
+  const escolher = (lista: FileList | null | undefined) => {
+    const arquivos = Array.from(lista ?? []);
+    if (aoEscolherVarios && arquivos.length) aoEscolherVarios(arquivos);
+    else if (arquivos[0]) aoEscolher(arquivos[0]);
+  };
   const soltar = (e: React.DragEvent) => {
     e.preventDefault();
     setArrastando(false);
-    const arquivo = e.dataTransfer.files?.[0];
-    if (arquivo) aoEscolher(arquivo);
+    escolher(e.dataTransfer.files);
   };
   return (
     <div className={`envio${grande ? '' : ' pequena'}${arrastando ? ' arrastando' : ''}`} role="button" tabIndex={0}
@@ -60,11 +66,85 @@ const Soltar: React.FC<{
       ) : null}
       <strong>{progresso !== null ? `Enviando… ${numero(progresso * 100)}%` : rotulo}</strong>
       <small>{dica}</small>
-      <input ref={entrada} type="file" accept={aceita} hidden
-        onChange={(e) => e.target.files?.[0] && aoEscolher(e.target.files[0])} />
+      <input ref={entrada} type="file" accept={aceita} hidden multiple={Boolean(aoEscolherVarios)}
+        onChange={(e) => escolher(e.target.files)} />
     </div>
   );
 };
+
+/** Os arquivos de uma pasta arrastada, com os das subpastas. O navegador entrega a pasta
+ *  como uma "entrada", lida em lotes (de uns 100) até vir vazio. */
+async function arquivosDaEntrada(entrada: FileSystemEntry): Promise<File[]> {
+  if (entrada.isFile) {
+    return new Promise((ok) => (entrada as FileSystemFileEntry).file((f) => ok([f]), () => ok([])));
+  }
+  if (!entrada.isDirectory) return [];
+  const leitor = (entrada as FileSystemDirectoryEntry).createReader();
+  const todas: FileSystemEntry[] = [];
+  for (;;) {
+    const lote = await new Promise<FileSystemEntry[]>((ok) => leitor.readEntries(ok, () => ok([])));
+    if (!lote.length) break;
+    todas.push(...lote);
+  }
+  return (await Promise.all(todas.map(arquivosDaEntrada))).flat();
+}
+
+/** A pasta das cenas: pelo seletor de pasta ou arrastando. Os vídeos de dentro (e das
+ *  subpastas) vão para o editor, e uma matriz que estiver junto também. */
+const SoltarPasta: React.FC<{progresso: string | null; aoEscolher: (arquivos: File[]) => void}> = (
+  {progresso, aoEscolher},
+) => {
+  const entrada = useRef<HTMLInputElement>(null);
+  const [arrastando, setArrastando] = useState(false);
+  const soltar = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setArrastando(false);
+    const entradas = Array.from(e.dataTransfer.items ?? [])
+      .map((i) => i.webkitGetAsEntry?.())
+      .filter((x): x is FileSystemEntry => Boolean(x));
+    const arquivos = entradas.length ? (await Promise.all(entradas.map(arquivosDaEntrada))).flat()
+      : Array.from(e.dataTransfer.files);
+    if (arquivos.length) aoEscolher(arquivos);
+  };
+  // O seletor de pasta (``webkitdirectory``) não está nos tipos do React.
+  const pasta = {webkitdirectory: '', directory: ''} as React.InputHTMLAttributes<HTMLInputElement>;
+  return (
+    <div className={`envio pequena${arrastando ? ' arrastando' : ''}`} role="button" tabIndex={0}
+      aria-label="Arraste a pasta das cenas" data-envio="cenas"
+      onClick={() => entrada.current?.click()}
+      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && entrada.current?.click()}
+      onDragOver={(e) => { e.preventDefault(); setArrastando(true); }}
+      onDragLeave={() => setArrastando(false)} onDrop={(e) => void soltar(e)}>
+      <strong>{progresso ?? 'Arraste a pasta das cenas'}</strong>
+      <small>ou clique para escolher · os vídeos de dentro, das subpastas também</small>
+      <input ref={entrada} type="file" multiple hidden {...pasta}
+        onChange={(e) => e.target.files?.length && aoEscolher(Array.from(e.target.files))} />
+    </div>
+  );
+};
+
+const FichaDaBiblioteca: React.FC<{b: BibliotecaInfo}> = ({b}) => (
+  <div className="ficha" aria-label="dados da biblioteca de cenas">
+    <span className="etiqueta">{b.nome}</span>
+    <span className="etiqueta">{b.cenas} cenas</span>
+    <span className="etiqueta">{duracao(b.duracao)} de cenas</span>
+    {b.evitadas ? (
+      <span className="etiqueta">
+        {b.evitadas} marcada{b.evitadas > 1 ? 's' : ''} “evitar” (fica{b.evitadas > 1 ? 'm' : ''} de fora)
+      </span>
+    ) : null}
+    {b.sem_descricao.length ? (
+      <span className="etiqueta" title={b.sem_descricao.join(', ')}>
+        {b.sem_descricao.length} clipe{b.sem_descricao.length > 1 ? 's' : ''} sem descrição
+      </span>
+    ) : null}
+    {b.sem_clipe.length ? (
+      <span className="etiqueta" title={b.sem_clipe.join(', ')}>
+        {b.sem_clipe.length} na matriz sem clipe
+      </span>
+    ) : null}
+  </div>
+);
 
 const FichaDoVideo: React.FC<{video: VideoInfo; rotulo?: string}> = ({video, rotulo = 'dados do vídeo'}) => (
   <div className="ficha" aria-label={rotulo}>
@@ -86,12 +166,21 @@ export type PropsDoEnvio = {
   fundo: VideoInfo | null;
   pessoa: VideoInfo | null;
   personagem: PersonagemInfo | null;
-  audio: AudioInfo | null;
+  /** Os áudios separados, na ordem em que tocam. */
+  audios: AudioInfo[];
+  /** A biblioteca de cenas, depois da matriz; e o que falta dela enquanto chega. */
+  biblioteca: BibliotecaInfo | null;
+  /** A pasta já chegou e falta a matriz. */
+  faltaMatriz: boolean;
+  enviandoBiblioteca: string | null;
   montagem: MontagemConfig;
   mudarMontagem: (p: Partial<MontagemConfig>) => void;
   progresso: Record<Envio, number | null>;
   erro: Record<Envio, string>;
   aoEscolher: (qual: Envio, arquivo: File) => void;
+  aoEscolherAudios: (arquivos: File[]) => void;
+  aoEscolherPasta: (arquivos: File[]) => void;
+  aoEscolherMatriz: (arquivo: File) => void;
   aoTirarAudio: () => void;
   recorte: {baixado: boolean; tamanho: string};
   /** Onde o vídeo vai ser postado, as recomendadas pelo formato dele e os avisos. */
@@ -104,34 +193,66 @@ export type PropsDoEnvio = {
 const Aviso: React.FC<{texto: string}> = ({texto}) => (texto ? <div className="aviso erro">{texto}</div> : null);
 
 const NOMES_DA_FALA: Record<Fala, string> = {fundo: 'O vídeo de fundo', pessoa: 'O vídeo da pessoa',
-  audio: 'Um áudio separado'};
+  audio: 'Áudio separado'};
+
+const FONTES_DO_FUNDO: [FonteDoFundo, string][] = [['video', 'Um vídeo'], ['cenas', 'Biblioteca de cenas']];
+const POR_CIMA: [PorCima, string][] = [['pessoa', 'Vídeo da pessoa'], ['personagem', 'Personagem animado'],
+  ['nada', 'Nada']];
 
 const EnvioDaMontagem: React.FC<PropsDoEnvio> = (p) => {
   const m = p.montagem;
-  const fala = falaEfetiva(m, p.fundo, p.pessoa, p.audio);
-  const mudos = [semSom(p.fundo) ? 'o vídeo de fundo' : '',
+  const comCenas = m.fonteDoFundo === 'cenas';
+  const fundo = comCenas ? null : p.fundo;
+  const fala = falaEfetiva(m, fundo, p.pessoa, p.audios);
+  const mudos = [semSom(fundo) ? 'o vídeo de fundo' : '',
     m.porCima === 'pessoa' && semSom(p.pessoa) ? 'o vídeo da pessoa' : ''].filter(Boolean);
-  const nenhumSom = fala !== 'audio' && semSom(fala === 'fundo' ? p.fundo : p.pessoa);
+  const nenhumSom = fala !== 'audio' && semSom(fala === 'fundo' ? fundo : p.pessoa);
   const custo = p.pessoa ? p.pessoa.duracao * p.pessoa.fps * CUSTO_DO_RECORTE_POR_QUADRO : 0;
   return (
     <div className="camadas">
       <div className="camada">
-        <strong>O vídeo de fundo</strong>
-        <small>Sem pessoa: a tela gravada, o jogo, os slides.</small>
-        <Soltar nome="fundo" rotulo="Arraste o fundo aqui" dica="ou clique · MP4, MOV, MKV, WebM…"
-          aceita="video/*,.mkv,.mov" progresso={p.progresso.fundo} aoEscolher={(f) => p.aoEscolher('fundo', f)} />
-        <Aviso texto={p.erro.fundo} />
-        {p.fundo ? <FichaDoVideo video={p.fundo} rotulo="dados do fundo" /> : null}
+        <strong>O fundo</strong>
+        <div className="linha-de-opcoes" role="group" aria-label="de onde vem o fundo">
+          {FONTES_DO_FUNDO.map(([v, nome]) => (
+            <button key={v} type="button" className="pilula" aria-pressed={m.fonteDoFundo === v}
+              onClick={() => p.mudarMontagem({fonteDoFundo: v})}>{nome}</button>
+          ))}
+        </div>
+        {comCenas ? (
+          <>
+            <small>
+              A pasta com os clipes e a matriz que descreve cada um (o <code>cenas.json</code>). O Gemini escolhe as
+              cenas pelo que é dito; sem ele, as palavras escolhem.
+            </small>
+            <SoltarPasta progresso={p.enviandoBiblioteca} aoEscolher={p.aoEscolherPasta} />
+            {p.faltaMatriz || p.biblioteca ? (
+              <Soltar nome="matriz" rotulo={p.biblioteca ? 'Trocar a matriz' : 'Agora, a matriz'}
+                dica="o cenas.json: uma lista com o arquivo e a descrição de cada cena" aceita=".json,application/json"
+                progresso={null} aoEscolher={p.aoEscolherMatriz} />
+            ) : null}
+            <Aviso texto={p.erro.biblioteca} />
+            {p.biblioteca ? <FichaDaBiblioteca b={p.biblioteca} /> : null}
+          </>
+        ) : (
+          <>
+            <small>Sem pessoa: a tela gravada, o jogo, os slides.</small>
+            <Soltar nome="fundo" rotulo="Arraste o fundo aqui" dica="ou clique · MP4, MOV, MKV, WebM…"
+              aceita="video/*,.mkv,.mov" progresso={p.progresso.fundo} aoEscolher={(f) => p.aoEscolher('fundo', f)} />
+            <Aviso texto={p.erro.fundo} />
+            {p.fundo ? <FichaDoVideo video={p.fundo} rotulo="dados do fundo" /> : null}
+          </>
+        )}
       </div>
 
       <div className="camada">
         <strong>Por cima</strong>
         <div className="linha-de-opcoes" role="group" aria-label="o que vai por cima">
-          {([['pessoa', 'Vídeo da pessoa'], ['personagem', 'Personagem animado']] as [PorCima, string][]).map(([v, nome]) => (
+          {POR_CIMA.map(([v, nome]) => (
             <button key={v} type="button" className="pilula" aria-pressed={m.porCima === v}
               onClick={() => p.mudarMontagem({porCima: v})}>{nome}</button>
           ))}
         </div>
+        {m.porCima === 'nada' ? <small>Só o fundo, com a legenda e as animações por cima.</small> : null}
         {m.porCima === 'pessoa' ? (
           <>
             <Soltar nome="pessoa" rotulo="Arraste o vídeo da pessoa" dica="você falando · MP4, MOV, WebM…"
@@ -164,7 +285,7 @@ const EnvioDaMontagem: React.FC<PropsDoEnvio> = (p) => {
               </>
             ) : null}
           </>
-        ) : (
+        ) : m.porCima === 'personagem' ? (
           <>
             <Soltar nome="personagem" rotulo="Arraste o personagem" dica="GIF, PNG animado ou WebP, em loop"
               aceita="image/gif,image/png,image/webp,.gif,.png,.webp,.apng" progresso={p.progresso.personagem}
@@ -189,14 +310,14 @@ const EnvioDaMontagem: React.FC<PropsDoEnvio> = (p) => {
               </div>
             ) : null}
           </>
-        )}
+        ) : null}
       </div>
 
       <div className="camada">
         <strong>O áudio vem de</strong>
         <div className="linha-de-opcoes" role="group" aria-label="de onde vem o áudio">
           {opcoesDeFala(m).map((f) => {
-            const mudo = f === 'fundo' ? semSom(p.fundo) : f === 'pessoa' ? semSom(p.pessoa) : false;
+            const mudo = f === 'fundo' ? semSom(fundo) : f === 'pessoa' ? semSom(p.pessoa) : false;
             return (
               <button key={f} type="button" className="pilula" aria-pressed={fala === f} disabled={mudo}
                 title={mudo ? 'este vídeo não tem som' : undefined} onClick={() => p.mudarMontagem({fala: f})}>
@@ -207,20 +328,28 @@ const EnvioDaMontagem: React.FC<PropsDoEnvio> = (p) => {
         </div>
         <small>
           {nenhumSom ? 'Nenhum dos vídeos tem som: sem um áudio separado, o vídeo sai mudo, sem cortes e sem legenda.'
-            : fala === 'audio' && !p.audio ? 'Envie o áudio: dele saem a legenda e os cortes.'
+            : fala === 'audio' && !p.audios.length ? 'Envie o áudio: dele saem a legenda e os cortes.'
               : 'Dele saem a legenda e os cortes.'}
           {mudos.length && !nenhumSom ? ` Sem som: ${mudos.join(' e ')}.` : ''}
         </small>
-        {fala === 'audio' ? (p.audio ? (
-          <div className="ficha" aria-label="dados do áudio separado">
-            <span className="etiqueta">{p.audio.nome}</span>
-            <span className="etiqueta">{duracao(p.audio.duracao)}</span>
-            <button type="button" className="botao pequeno" onClick={p.aoTirarAudio}>Trocar o áudio</button>
-          </div>
-        ) : (
-          <Soltar nome="audio" rotulo="Arraste o áudio" dica="MP3, WAV, M4A…" aceita="audio/*,.mp3,.wav,.m4a"
-            progresso={p.progresso.audio} aoEscolher={(f) => p.aoEscolher('audio', f)} />
-        )) : null}
+        {fala === 'audio' ? (
+          <>
+            {p.audios.length ? (
+              <div className="ficha" aria-label="os áudios separados">
+                {p.audios.map((a, i) => (
+                  <span key={a.id} className="etiqueta">{p.audios.length > 1 ? `${i + 1}. ` : ''}{a.nome} · {duracao(a.duracao)}</span>
+                ))}
+                <button type="button" className="botao pequeno" onClick={p.aoTirarAudio}>
+                  {p.audios.length > 1 ? 'Trocar os áudios' : 'Trocar o áudio'}
+                </button>
+              </div>
+            ) : null}
+            <Soltar nome="audio" rotulo={p.audios.length ? 'Juntar mais áudios' : 'Arraste o áudio (ou vários)'}
+              dica="MP3, WAV, M4A… Vários (um por parágrafo) tocam na ordem do nome, 0,3 s entre eles."
+              aceita="audio/*,.mp3,.wav,.m4a" progresso={p.progresso.audio}
+              aoEscolher={(f) => p.aoEscolherAudios([f])} aoEscolherVarios={p.aoEscolherAudios} />
+          </>
+        ) : null}
         <Aviso texto={p.erro.audio} />
       </div>
     </div>
@@ -282,6 +411,12 @@ export const PassoEnvio: React.FC<PropsDoEnvio> = (p) => (
 
 // ── 2. Edições ───────────────────────────────────────────────────────────
 
+const VOZES: [Voz, string, string][] = [
+  ['original', 'Original', 'A voz como foi gravada.'],
+  ['limpa', 'Limpa', 'Tira o grave, o eco do cômodo e o chiado, e deixa cada parte no mesmo volume.'],
+  ['estudio', 'Estúdio', 'A limpa, mais o brilho, a compressão e a voz aberta em estéreo (a do preset de notícia).'],
+];
+
 export const PassoEdicoes: React.FC<{
   edicao: Edicao; mudar: (p: Partial<Edicao>) => void;
   /** Na montagem, o que vai por cima (e pode mudar de lugar); ``null`` no vídeo único. */
@@ -291,7 +426,9 @@ export const PassoEdicoes: React.FC<{
   marcado: string | null;
   aoEscolherPreset: (p: Preset) => void;
   temas: Record<string, string>;
-}> = ({edicao, mudar, porCima, presets, marcado, aoEscolherPreset, temas}) => {
+  /** Na montagem, a janela com a câmera vale. */
+  naMontagem: boolean;
+}> = ({edicao, mudar, porCima, presets, marcado, aoEscolherPreset, temas, naMontagem}) => {
   const tocando = useRef<HTMLAudioElement | null>(null);
   const ouvir = () => {
     tocando.current?.pause();
@@ -302,7 +439,7 @@ export const PassoEdicoes: React.FC<{
   return (
     <section className="passo" id="passo-edicoes">
       <Cabeca n={2} titulo="Escolha as edições"
-        texto="Comece por um preset e ajuste o que quiser. Tudo decidido por regras, sem IA na nuvem: o mesmo vídeo sai sempre igual." />
+        texto="Comece por um preset e ajuste o que quiser. Tudo é decidido por regras, no seu computador; só os cartões animados, as cenas da biblioteca e os destaques da legenda pedem o Gemini." />
       <div className="presets" role="group" aria-label="presets de edição">
         {presets.map((p) => (
           <button key={p.nome} type="button" className="preset" aria-pressed={marcado === p.nome}
@@ -326,11 +463,35 @@ export const PassoEdicoes: React.FC<{
           descricao="Números e nomes saltam da legenda num adesivo colorido." />
         <Interruptor ligado={edicao.icones} aoMudar={(v) => mudar({icones: v})} titulo="Ícones automáticos"
           descricao="Quando a fala cita “dinheiro”, “celular”, “foguete”… o ícone aparece." />
-        {porCima ? (
+        {porCima && porCima !== 'nada' ? (
           <Interruptor ligado={edicao.mover} aoMudar={(v) => mudar({mover: v})}
             titulo={porCima === 'personagem' ? 'Mover o personagem' : 'Mover a pessoa'}
             descricao="Em alguns cortes, vai para um lado, para o meio, para cima, para baixo, para perto ou para longe." />
         ) : null}
+        {naMontagem ? (
+          <Interruptor ligado={edicao.janela} aoMudar={(v) => mudar({janela: v})} titulo="Janela e câmera"
+            descricao="A cena numa janela 16:9 que cresce e encolhe, com a câmera empurrando, e o personagem em pé na borda dela." />
+        ) : null}
+        <Interruptor ligado={edicao.animacoes} aoMudar={(v) => mudar({animacoes: v})} titulo="Cartões animados"
+          descricao="Selo, lista, quadro, enquete, carimbo, número e flash, escritos pelo Gemini na palavra certa. Precisa da chave dele (passo 5)." />
+      </div>
+      <div className="campos">
+        <div className="campo largo">
+          <span id="rotulo-voz">Voz</span>
+          <div className="linha-de-opcoes" role="group" aria-labelledby="rotulo-voz">
+            {VOZES.map(([v, nome]) => (
+              <button key={v} type="button" className="pilula" aria-pressed={edicao.voz === v}
+                onClick={() => mudar({voz: v})}>{nome}</button>
+            ))}
+          </div>
+          <small>{VOZES.find(([v]) => v === edicao.voz)?.[2]}</small>
+        </div>
+        <label className="campo largo">
+          <span>Bipe nas palavras</span>
+          <input type="text" value={edicao.bipe} maxLength={500} placeholder="cocaína, sexo, decapitação"
+            onChange={(e) => mudar({bipe: e.target.value})} />
+          <small>Separadas por vírgula. Uma sílaba vira bipe na voz e asteriscos na legenda: “coca**na”.</small>
+        </label>
       </div>
       <div className="campos">
         <label className="campo">
@@ -412,6 +573,12 @@ export const PassoEdicoes: React.FC<{
 /** As larguras de legenda oferecidas (os presets usam 14, 20 e 36). */
 const LARGURAS = [10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 42];
 
+const ESTILOS: [EstiloDaLegenda, string, string][] = [
+  ['classica', 'Clássica', 'Uma linha por vez, em karaokê: a palavra-chave acende amarela.'],
+  ['destaques', 'Destaques', 'Até 4 palavras que entram uma a uma, com os nomes em ciano, as expressões em rosa e '
+    + 'a frase de efeito numa pílula amarela. Quem marca é o Gemini; sem ele, os nomes e os números.'],
+];
+
 const IDIOMAS: [string, string][] = [['pt', 'Português'], ['en', 'Inglês'], ['es', 'Espanhol'],
   ['fr', 'Francês'], ['it', 'Italiano'], ['de', 'Alemão']];
 
@@ -449,9 +616,19 @@ export const PassoLegenda: React.FC<{
           <input type="range" min={0.6} max={1.6} step={0.05} value={edicao.tamanho_legenda}
             onChange={(e) => mudar({tamanho_legenda: Number(e.target.value)})} />
         </label>
+        <div className="campo">
+          <span id="rotulo-estilo">Estilo</span>
+          <div className="linha-de-opcoes" role="group" aria-labelledby="rotulo-estilo">
+            {ESTILOS.map(([v, nome]) => (
+              <button key={v} type="button" className="pilula" aria-pressed={edicao.estilo_da_legenda === v}
+                onClick={() => mudar({estilo_da_legenda: v})}>{nome}</button>
+            ))}
+          </div>
+          <small>{ESTILOS.find(([v]) => v === edicao.estilo_da_legenda)?.[2]}</small>
+        </div>
         <label className="campo">
           <span>Letras por linha</span>
-          <select value={edicao.caracteres_por_linha ?? ''}
+          <select value={edicao.caracteres_por_linha ?? ''} disabled={edicao.estilo_da_legenda !== 'classica'}
             onChange={(e) => mudar({caracteres_por_linha: e.target.value ? Number(e.target.value) : null})}>
             <option value="">Automático</option>
             {LARGURAS.map((n) => <option key={n} value={n}>Até {n}</option>)}

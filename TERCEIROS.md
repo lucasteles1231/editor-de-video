@@ -10,6 +10,7 @@ na instalação. A lista completa está aqui, com a licença de cada um.
 |---|---|---|
 | Fonte **DejaVu Sans Bold** | `editor/recursos/DejaVuSans-Bold.ttf` | Bitstream Vera e domínio público: [`licencas/DejaVu-Fonts.txt`](licencas/DejaVu-Fonts.txt) |
 | Fonte **Anton**, a da chamada da thumbnail | `editor/recursos/Anton-Regular.ttf` | SIL Open Font License 1.1: [`licencas/Anton-OFL.txt`](licencas/Anton-OFL.txt) |
+| Fonte **Inter Black**, a da legenda em destaques (a instância de peso 900 do Google Fonts) | `editor/recursos/Inter-Black.ttf` | SIL Open Font License 1.1: [`licencas/Inter-OFL.txt`](licencas/Inter-OFL.txt) |
 | 122 ícones do **Tabler Icons** 3.48.0 (e os da tabela do README) | `editor/recursos/icones.json` e `docs/img/funcoes/` | MIT: [`licencas/Tabler-Icons-MIT.txt`](licencas/Tabler-Icons-MIT.txt) |
 | **React**, React DOM e scheduler | dentro da página montada (`editor/interface/estatico/`) | MIT: [`licencas/React-MIT.txt`](licencas/React-MIT.txt) |
 | **driver.js** 1.9, o tour | dentro da página montada | MIT: [`licencas/driver.js-MIT.txt`](licencas/driver.js-MIT.txt) |

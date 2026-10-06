@@ -28,7 +28,18 @@ export type Edicao = {
   volume_dos_sons: number;
   /** A largura da legenda; ``null`` é a automática (18 em pé, 32 deitado). */
   caracteres_por_linha: number | null;
+  /** Na montagem: a cena numa janela 16:9 com câmera, e o personagem na borda dela. */
+  janela: boolean;
+  /** Os cartões animados escritos pelo Gemini. */
+  animacoes: boolean;
+  /** As palavras proibidas, separadas por vírgula (bipe na voz, asteriscos na legenda). */
+  bipe: string;
+  voz: Voz;
+  estilo_da_legenda: EstiloDaLegenda;
 };
+
+export type Voz = 'original' | 'limpa' | 'estudio';
+export type EstiloDaLegenda = 'classica' | 'destaques';
 
 /** Um ponto de partida para um tipo de vídeo (editor/presets.py). O formato não é dele:
  *  vem da plataforma. */
@@ -90,11 +101,14 @@ export type VideoInfo = {
 /** Como é o vídeo: um só, com a pessoa falando; ou um fundo e, por cima, a pessoa ou um
  *  personagem animado. */
 export type Modo = 'um' | 'montagem';
-export type PorCima = 'pessoa' | 'personagem';
+export type PorCima = 'pessoa' | 'personagem' | 'nada';
+/** De onde vem o fundo da montagem: um vídeo, ou a biblioteca de cenas (a pasta e a matriz). */
+export type FonteDoFundo = 'video' | 'cenas';
 export type FormatoDoQuadro = 'fundo' | 'vertical' | 'horizontal' | 'quadrado';
 /** De onde vem o áudio: o vídeo de fundo, o vídeo da pessoa ou um áudio separado. */
 export type Fala = 'fundo' | 'pessoa' | 'audio';
 export type MontagemConfig = {
+  fonteDoFundo: FonteDoFundo;
   porCima: PorCima;
   /** Como tirar o fundo da pessoa: o alfa do arquivo, ou o MODNet. */
   recorte: 'transparente' | 'modnet';
@@ -111,6 +125,15 @@ export type PersonagemInfo = {
 
 export type AudioInfo = {id: string; nome: string; tamanho_bytes: number; duracao: number};
 
+/** A biblioteca de cenas depois da matriz: a ficha e a capa (a cena forte que a thumbnail usa). */
+export type BibliotecaInfo = {
+  id: string; nome: string; cenas: number; duracao: number; evitadas: number;
+  sem_clipe: string[]; sem_descricao: string[]; capa: VideoInfo;
+};
+
+/** Quem escreveu o roteiro (as cenas e os cartões) e quanto. */
+export type ResumoDoRoteiro = {por: string; aviso: string; pedidos: number; cenas: number; cartoes: number};
+
 export type Resultado = {
   video: string;
   plano: string;
@@ -122,6 +145,7 @@ export type Resultado = {
   segundos: number;
   largura: number;
   altura: number;
+  roteiro?: ResumoDoRoteiro | Record<string, never>;
 };
 
 export type Tarefa = {

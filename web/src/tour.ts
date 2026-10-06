@@ -27,7 +27,7 @@ export function comecarTour(): void {
           side: 'right',
           align: 'start',
           title: '1. Envie o vídeo',
-          description: 'Arraste um vídeo falado (vertical ou horizontal). Ou monte em camadas: um fundo sem pessoa e, por cima, o vídeo da pessoa ou um personagem animado. Depois, diga onde vai postar: o editor recomenda pelo formato do vídeo, e a thumbnail sai no formato de cada plataforma. Nada vai para a internet.',
+          description: 'Arraste um vídeo falado (vertical ou horizontal). Ou monte em camadas: um fundo (um vídeo, ou uma biblioteca de cenas com a matriz que descreve cada uma) e, por cima, o vídeo da pessoa, um personagem animado ou nada; o áudio pode vir em vários arquivos. Depois, diga onde vai postar: o editor recomenda pelo formato do vídeo, e a thumbnail sai no formato de cada plataforma. Nada vai para a internet.',
         },
       },
       {
@@ -36,7 +36,7 @@ export function comecarTour(): void {
           side: 'right',
           align: 'start',
           title: '2. Escolha as edições',
-          description: 'Comece por um preset (gameplay, vlog, review, explicação técnica, humor…) e ajuste o que quiser: cortes de silêncio, zoom, palavras que saltam, ícones, o ritmo e os sons. O botão Ouvir toca cada tema.',
+          description: 'Comece por um preset (gameplay, vlog, review, explicação técnica, humor, notícia com cenas…) e ajuste o que quiser: cortes de silêncio, zoom, palavras que saltam, ícones, a janela com câmera, os cartões animados, a voz, o bipe, o ritmo e os sons. O botão Ouvir toca cada tema.',
         },
       },
       {

@@ -195,9 +195,9 @@ def test_montagem_com_personagem_e_narracao(navegador, endereco, tmp_path):
     expect(audio_vem_de.get_by_role("button")).to_have_count(2)
     expect(audio_vem_de.get_by_role("button", name="O vídeo de fundo")).to_be_disabled()
     expect(pagina.locator('[data-envio="audio"]')).to_have_count(0)
-    audio_vem_de.get_by_role("button", name="Um áudio separado").click()
+    audio_vem_de.get_by_role("button", name="Áudio separado").click()
     pagina.set_input_files('[data-envio="audio"] input', str(audio_wav(tmp_path / "n.wav")))
-    expect(pagina.get_by_label("dados do áudio separado")).to_contain_text("n.wav")
+    expect(pagina.get_by_label("os áudios separados")).to_contain_text("n.wav")
     # a montagem tem o "Mover o personagem"; o fundo é deitado, e o editor recomenda o
     # YouTube. Trocar para o TikTok põe o quadro em pé (o passo 4 acompanha).
     expect(pagina.locator("label.interruptor", has_text="Mover o personagem")).to_have_count(1)
@@ -213,13 +213,88 @@ def test_montagem_com_personagem_e_narracao(navegador, endereco, tmp_path):
         pagina.get_by_role("button", name="Editar vídeo").click()
     montagem = pedido.value.post_data_json["montagem"]
     assert montagem["formato"] == "vertical" and montagem["fala"] == "audio"
-    assert montagem["personagem_id"] and montagem["audio_id"] and "pessoa_id" not in montagem
+    assert montagem["personagem_id"] and len(montagem["audio_ids"]) == 1
+    assert "pessoa_id" not in montagem
     pagina.locator(".miniaturas img").first.wait_for(timeout=120_000)
 
     saida = tmp_path / "saida"
     editado = next(saida.glob("tela-editado.mp4"))
     assert (ler_info(editado)["largura"], ler_info(editado)["altura"]) == (180, 320)
     assert list(saida.glob("*-thumb-1080x1920.png"))
+    assert not erros, erros
+
+
+def test_biblioteca_de_cenas(navegador, endereco, tmp_path):
+    """A pasta de cenas com a matriz dentro, nada por cima, a narração em dois arquivos e
+    o preset "Notícia com cenas": o pedido leva a biblioteca e os áudios em ordem, e o
+    resultado diz quem escreveu o roteiro (a IA falsa, nos testes)."""
+    import json
+
+    from tests.test_montagem import audio_wav
+
+    pagina = navegador.new_page(viewport={"width": 1366, "height": 900})
+    pagina.add_init_script("localStorage.setItem('editor-tour-visto', '1')")
+    erros: list[str] = []
+    pagina.on("pageerror", lambda e: erros.append(str(e)))
+    pagina.on("console", lambda m: m.type == "error" and erros.append(m.text))
+    pagina.goto(endereco)
+
+    pasta = tmp_path / "cenas"
+    (pasta / "clipes").mkdir(parents=True)
+    for k, nome in enumerate(["t1-001", "t1-002", "t1-003", "t1-004"]):
+        fazer_video(pasta / "clipes" / f"{nome}.mp4", largura=320, altura=180,
+                    segundos=1.0 + k * 0.2, com_audio=False)
+    matriz = [{"id": "t1-001", "arquivo": "cenas/clipes/t1-001.mp4", "descricao": "explosão",
+               "energia": "alta"},
+              {"id": "t1-002", "arquivo": "t1-002.mp4", "descricao": "praia"},
+              {"id": "t1-003", "arquivo": "t1-003.mp4", "descricao": "boate",
+               "monetizacao": "evitar"},
+              {"id": "t1-004", "arquivo": "t1-004.mp4", "descricao": "cidade"}]
+    (pasta / "cenas.json").write_text(json.dumps(matriz), encoding="utf-8")
+
+    pagina.get_by_role("button", name="Um fundo e, por cima").click()
+    pagina.get_by_role("button", name="Biblioteca de cenas").click()
+    pagina.set_input_files('[data-envio="cenas"] input', str(pasta))
+    ficha = pagina.get_by_label("dados da biblioteca de cenas")
+    expect(ficha).to_contain_text("3 cenas", timeout=30_000)
+    expect(ficha).to_contain_text("1 marcada “evitar” (fica de fora)")
+    pagina.get_by_role("button", name="Nada", exact=True).click()
+    # Sem som nos clipes, a fala vem dos áudios: dois, que tocam na ordem do nome.
+    audio_vem_de = pagina.get_by_role("group", name="de onde vem o áudio")
+    expect(audio_vem_de.get_by_role("button")).to_have_count(1)
+    pagina.set_input_files('[data-envio="audio"] input',
+                           [str(audio_wav(tmp_path / "parte 2.wav")),
+                            str(audio_wav(tmp_path / "parte 1.wav"))])
+    expect(pagina.get_by_label("os áudios separados")).to_contain_text("1. parte 1.wav")
+    expect(pagina.get_by_label("os áudios separados")).to_contain_text("2. parte 2.wav")
+
+    pagina.get_by_role("button", name=re.compile("^Notícia com cenas")).click()
+    expect(pagina.locator("label.interruptor", has_text="Janela e câmera")
+           .locator("input")).to_be_checked()
+    expect(pagina.get_by_role("group", name="Voz").get_by_role("button", name="Estúdio")
+           ).to_have_attribute("aria-pressed", "true")
+    expect(pagina.get_by_role("group", name="Estilo").get_by_role("button", name="Destaques")
+           ).to_have_attribute("aria-pressed", "true")
+    expect(pagina.get_by_placeholder("cocaína, sexo, decapitação")).to_have_value(
+        re.compile("^cocaína, sexo"))
+    # leve, para o teste não demorar (a biblioteca não limita a resolução)
+    pagina.get_by_role("button", name="Em pé (9:16)").click()
+    resolucao = pagina.locator("label.campo", has_text="Resolução").locator("select")
+    expect(resolucao.locator('option[value="2160p"]')).to_be_enabled()
+    resolucao.select_option("480p")
+
+    with pagina.expect_request(lambda r: r.url.split("?")[0].endswith("/api/tarefas")
+                               and r.method == "POST") as pedido:
+        pagina.get_by_role("button", name="Editar vídeo").click()
+    dados = pedido.value.post_data_json
+    montagem = dados["montagem"]
+    assert montagem["biblioteca_id"] and "fundo_id" not in montagem
+    assert len(montagem["audio_ids"]) == 2 and montagem["fala"] == "audio"
+    assert "pessoa_id" not in montagem and "personagem_id" not in montagem
+    assert dados["edicao"]["estilo_da_legenda"] == "destaques"
+    expect(pagina.locator(".painel .roteiro")).to_contain_text("Roteiro da IA de teste",
+                                                               timeout=180_000)
+    assert list((tmp_path / "saida").glob("cenas-editado.mp4"))
     assert not erros, erros
 
 

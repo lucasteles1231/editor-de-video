@@ -42,6 +42,20 @@ class OpcoesDeEdicao:
     volume_dos_sons: float = 1.0
     #: A largura da legenda; vazio, 18 em pé e 32 deitado.
     caracteres_por_linha: int | None = None
+    #: Na montagem, a cena numa janela 16:9 com a câmera e o personagem na borda dela.
+    #: Sem ela, o fundo encaixado de sempre.
+    janela: bool = False
+    #: Os cartões animados (selo, lista, quadro, enquete, carimbo, destaque, flash),
+    #: escritos pelo Gemini.
+    animacoes: bool = False
+    #: As palavras proibidas, separadas por vírgula: uma sílaba vira bipe na voz e
+    #: asteriscos na legenda e nos cartões.
+    bipe: str = ""
+    #: O tratamento da voz: "original", "limpa" ou "estudio".
+    voz: str = "original"
+    #: "classica" (uma linha, karaokê) ou "destaques" (páginas de até 4 palavras que
+    #: entram uma a uma, com cores e a frase de efeito numa pílula amarela).
+    estilo_da_legenda: str = "classica"
 
     def problemas(self) -> list[str]:
         erros = []
@@ -65,8 +79,16 @@ class OpcoesDeEdicao:
             erros.append("o volume dos sons vai de 0,3 a 1,5")
         if self.caracteres_por_linha is not None and not 10 <= self.caracteres_por_linha <= 42:
             erros.append("a legenda vai de 10 a 42 caracteres por linha")
-        from editor import sons
+        from editor import plano, sons, voz
 
+        if self.estilo_da_legenda not in plano.ESTILOS_DA_LEGENDA:
+            erros.append(f"estilo de legenda desconhecido: {self.estilo_da_legenda} "
+                         f"(use {', '.join(plano.ESTILOS_DA_LEGENDA)})")
+
+        if self.voz not in voz.NIVEIS:
+            erros.append(f"voz desconhecida: {self.voz} (use {', '.join(voz.NIVEIS)})")
+        if len(self.bipe) > 500:
+            erros.append("a lista do bipe passa de 500 letras")
         if self.tema_dos_sons not in sons.temas():
             erros.append(f"tema de sons desconhecido: {self.tema_dos_sons} "
                          f"(use {', '.join(sons.temas())})")

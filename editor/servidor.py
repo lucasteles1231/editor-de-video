@@ -39,6 +39,7 @@ from PIL import Image
 
 from editor import (
     __version__,
+    cenas,
     ia,
     icones,
     imagens,
@@ -67,6 +68,10 @@ MAOS = tuple(sorted(f"mao-{estilo}-{tom}.{'png' if estilo == '3d' else 'svg'}"
                     for estilo in ("3d", "vetor")
                     for tom in ("default", "light", "medium-light", "medium", "medium-dark",
                                 "dark")))
+#: A matriz da biblioteca de cenas (o cenas.json do chat tinha 80 KB) e as partes do
+#: áudio separado.
+MATRIZ_MAXIMA = 2 * 1024 * 1024
+PARTES_MAXIMAS = 30
 #: Envios mais velhos que isto são apagados quando a interface abre.
 GUARDAR_ENVIOS_S = 2 * 24 * 3600
 
@@ -201,6 +206,7 @@ def criar_app(token: str, *, porta: int, pasta_saida: Path | None = None,
     videos: dict[str, dict] = {}
     personagens: dict[str, dict] = {}
     audios: dict[str, dict] = {}
+    bibliotecas: dict[str, dict] = {}
     recortes: dict[tuple[str, float], tuple[np.ndarray, recorte.Recorte]] = {}
     trava_dos_recortes = threading.Lock()
     hosts = {f"127.0.0.1:{porta}", f"localhost:{porta}"}
@@ -233,6 +239,21 @@ def criar_app(token: str, *, porta: int, pasta_saida: Path | None = None,
         if aid not in audios:
             raise HTTPException(404, "áudio não encontrado — envie de novo")
         return audios[aid]
+
+    def _fundo_da_montagem(m: montagem.Montagem) -> Path:
+        """O vídeo de fundo, ou, na biblioteca de cenas, a capa dela (a mesma que a
+        thumbnail usa como "Vídeo")."""
+        if m.fundo is not None:
+            return Path(m.fundo)
+        for b in bibliotecas.values():
+            if b["pasta"] == Path(m.cenas) and b["capa"]:
+                return videos[b["capa"]["id"]]["caminho"]
+        return cenas.clipes_da_pasta(Path(m.cenas))[0]
+
+    def _biblioteca(bid: str) -> dict:
+        if bid not in bibliotecas:
+            raise HTTPException(404, "biblioteca não encontrada — envie a pasta de novo")
+        return bibliotecas[bid]
 
     def _tarefa(tid: str) -> Tarefa:
         if tid not in gerente.tarefas:
@@ -472,6 +493,59 @@ def criar_app(token: str, *, porta: int, pasta_saida: Path | None = None,
         return {"id": aid, "nome": destino.name, "tamanho_bytes": destino.stat().st_size,
                 "duracao": round(duracao, 2)}
 
+    # ── a biblioteca de cenas: a pasta dos clipes e a matriz ──────────────
+
+    def _registrar_video(caminho: Path) -> dict:
+        """Um arquivo que já está no computador vira um "vídeo" da página (a capa da
+        biblioteca, de onde a thumbnail tira os quadros)."""
+        vid = uuid.uuid4().hex[:12]
+        info = video_mod.sondar(caminho)
+        videos[vid] = {"caminho": caminho, "info": info, "nome": caminho.name, "tem_alfa": False}
+        return {"id": vid, "nome": caminho.name, "tamanho_bytes": caminho.stat().st_size,
+                "largura": info.largura, "altura": info.altura, "fps": float(info.fps),
+                "duracao": round(info.duracao, 2), "vertical": info.vertical,
+                "tem_audio": info.tem_audio, "tem_alfa": False}
+
+    @app.post("/api/bibliotecas")
+    def nova_biblioteca(dados: Annotated[dict | None, Body()] = None):
+        bid = uuid.uuid4().hex[:12]
+        pasta = envios / bid / "clipes"
+        pasta.mkdir(parents=True)
+        nome = Path(_nome_seguro(str((dados or {}).get("nome") or "cenas"))).stem or "cenas"
+        bibliotecas[bid] = {"pasta": pasta, "nome": nome, "matriz": None, "capa": None}
+        return {"id": bid, "nome": nome}
+
+    @app.post("/api/bibliotecas/{bid}/clipes")
+    def enviar_clipe(bid: str, arquivo: Annotated[UploadFile, File()]):
+        b = _biblioteca(bid)
+        nome = _nome_seguro(arquivo.filename or "")
+        if Path(nome).suffix.lower() not in cenas.EXTENSOES:
+            raise HTTPException(400, "Na biblioteca entram só vídeos (MP4, MOV, WebM, MKV).")
+        with (b["pasta"] / nome).open("wb") as f:
+            shutil.copyfileobj(arquivo.file, f, length=1024 * 1024)
+        return {"clipes": len(cenas.clipes_da_pasta(b["pasta"]))}
+
+    @app.post("/api/bibliotecas/{bid}/matriz")
+    def enviar_matriz(bid: str, arquivo: Annotated[UploadFile, File()]):
+        b = _biblioteca(bid)
+        dados = arquivo.file.read(MATRIZ_MAXIMA + 1)
+        if len(dados) > MATRIZ_MAXIMA:
+            raise HTTPException(400, "A matriz passa de 2 MB.")
+        try:
+            lida = cenas.ler_matriz(dados.decode("utf-8-sig"), cenas.clipes_da_pasta(b["pasta"]))
+        except UnicodeDecodeError as erro:
+            raise HTTPException(422, "A matriz precisa ser um texto em UTF-8 (o cenas.json)."
+                                ) from erro
+        except cenas.MatrizInvalida as erro:
+            raise HTTPException(422, str(erro)) from erro
+        destino = b["pasta"].parent / "matriz.json"
+        destino.write_bytes(dados)
+        b["matriz"] = destino
+        # A capa: uma cena forte, registrada como vídeo, para a thumbnail e as ideias.
+        capa = next((c for c in lida.cenas if c.energia == "alta"), lida.cenas[0])
+        b["capa"] = _registrar_video(capa.arquivo)
+        return {"id": bid, "nome": b["nome"], **lida.ficha(), "capa": b["capa"]}
+
     @app.get("/api/videos/{vid}/arquivo")
     def video_original(vid: str):
         return FileResponse(_video(vid)["caminho"])
@@ -564,28 +638,40 @@ def criar_app(token: str, *, porta: int, pasta_saida: Path | None = None,
 
     def _montagem(pedido: dict) -> tuple[montagem.Montagem, Path, str]:
         """A montagem pedida pela página, o vídeo da thumbnail e o nome da saída."""
-        fundo = _video(str(pedido.get("fundo_id", "")))
-        pessoa = personagem = audio = None
+        fundo = biblioteca = None
+        if pedido.get("biblioteca_id"):
+            biblioteca = _biblioteca(str(pedido["biblioteca_id"]))
+            if biblioteca["matriz"] is None:
+                raise HTTPException(422, "Envie a matriz da biblioteca (o cenas.json).")
+        else:
+            fundo = _video(str(pedido.get("fundo_id", "")))
+        pessoa = personagem = None
         if pedido.get("pessoa_id"):
             pessoa = _video(str(pedido["pessoa_id"]))
         if pedido.get("personagem_id"):
             personagem = _personagem(str(pedido["personagem_id"]))
-        if pedido.get("audio_id"):
-            audio = _audio(str(pedido["audio_id"]))
+        ids_de_audio = pedido.get("audio_ids") or (
+            [pedido["audio_id"]] if pedido.get("audio_id") else [])
+        partes = [_audio(str(a))["caminho"] for a in list(ids_de_audio)[:PARTES_MAXIMAS]]
         recorte_ = str(pedido.get("recorte") or "modnet")
         if pessoa is not None and recorte_ == "transparente" and not pessoa.get("tem_alfa"):
             raise HTTPException(422, "Este vídeo da pessoa não tem transparência: escolha "
                                      "recortar com o MODNet.")
         m = montagem.Montagem(
-            fundo["caminho"], pessoa=pessoa["caminho"] if pessoa else None,
+            fundo["caminho"] if fundo else None, pessoa=pessoa["caminho"] if pessoa else None,
             personagem=personagem["caminho"] if personagem else None,
-            audio=audio["caminho"] if audio else None, recorte=recorte_,
+            audios=tuple(partes), recorte=recorte_,
+            cenas=biblioteca["pasta"] if biblioteca else None,
+            matriz=biblioteca["matriz"] if biblioteca else None,
             formato=str(pedido.get("formato") or "fundo"),
             tirar_fundo_do_personagem=bool(pedido.get("tirar_fundo_do_personagem", True)),
             fala=str(pedido["fala"]) if pedido.get("fala") else None)
         erros = m.problemas()
         if erros:
             raise HTTPException(422, "; ".join(erros))
+        if biblioteca is not None:
+            capa = videos[biblioteca["capa"]["id"]]
+            return m, (pessoa or capa)["caminho"], f"{biblioteca['nome']}.mp4"
         return m, (pessoa or fundo)["caminho"], fundo["nome"]
 
     @app.post("/api/tarefas")
@@ -742,12 +828,13 @@ def criar_app(token: str, *, porta: int, pasta_saida: Path | None = None,
         else:
             # Na montagem, os quadros vêm das duas camadas: 4 da pessoa e 4 do fundo (com
             # o personagem, que não está em vídeo nenhum, os 8 são do fundo).
-            info_do_fundo = video_mod.sondar(m.fundo)
+            fundo_ = _fundo_da_montagem(m)
+            info_do_fundo = video_mod.sondar(fundo_)
             da_pessoa = []
             if m.pessoa is not None:
                 da_pessoa = quadros_candidatos(m.pessoa, video_mod.sondar(m.pessoa), n=4,
                                                alfa=m.recorte == "transparente")
-            do_fundo = quadros_candidatos(m.fundo, info_do_fundo,
+            do_fundo = quadros_candidatos(fundo_, info_do_fundo,
                                           n=ia.QUADROS - len(da_pessoa))
             quadros = da_pessoa + do_fundo
             origens = ["pessoa"] * len(da_pessoa) + ["fundo"] * len(do_fundo)

@@ -8,6 +8,10 @@ O desenho da legenda: uma linha por vez, palavra por palavra, no estilo dos Shor
   espaço, e ela cresce num balão (ou numa estrela), inclinada — uma legenda só, com
   uma palavra que salta. Afastar as vizinhas é o que impede a forma de cobrir a
   primeira letra delas.
+- **Destaques** (o outro estilo, o da legenda do vídeo de referência): páginas
+  de até 4 palavras em até duas linhas, na Inter Black com contorno escuro. Cada palavra
+  entra 80 ms antes de ser dita, com um pulo; a dita sobe 7 px e acende (âmbar, ou a cor
+  do destaque com um brilho). A frase de efeito vem sozinha numa pílula amarela.
 
 Tudo é medido pela fonte de verdade (DejaVu Sans Bold, embutida no pacote), então a
 linha sai igual no Windows, no macOS e no Linux.
@@ -20,8 +24,10 @@ import math
 import random
 from importlib.resources import files
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
+from editor import animacao as a
+from editor.cartoes import colar
 from editor.plano import Adesivo, Bloco, Plano
 
 CINZA = (150, 150, 150)
@@ -60,6 +66,22 @@ CORES_DO_ADESIVO = (
 )
 GIROS = (-4, 3, -3, 4)
 
+#: A legenda "destaques", em pixels de um quadro de 1080 (``FullPage.tsx``): as cores de
+#: cada destaque parado e dito, o contorno, a largura e o corpo.
+TINTA = (16, 2, 31)
+PARADA = {"": (255, 255, 255, 235), "rosa": (255, 77, 157, 255), "ciano": (45, 226, 230, 255)}
+DITA = {"": (255, 209, 102, 255), "rosa": (255, 77, 157, 255), "ciano": (45, 226, 230, 255)}
+PILULA = (255, 209, 102)
+TEXTO_DA_PILULA = (18, 0, 31)
+LARGURA_DA_PAGINA = 940
+LARGURA_DA_PAGINA_DEITADA = 1240
+CORPO_DA_LINHA = (56, 92)
+CORPO_DA_PILULA = (56, 96)
+#: Quanto a palavra dita sobe; a entrada (opacidade em 80 ms, pulo em 260 ms) e o
+#: tempo da saída (os últimos quadros da página).
+SOBE_DITA = 7
+ENTRA_S = 0.08
+
 
 @functools.lru_cache(maxsize=1)
 def _bytes_da_fonte() -> bytes:
@@ -71,6 +93,72 @@ def fonte(px: int) -> ImageFont.FreeTypeFont:
     """A DejaVu Sans Bold no tamanho pedido, lida da memória (funciona instalada de
     qualquer jeito, inclusive de dentro de um zip)."""
     return ImageFont.truetype(io.BytesIO(_bytes_da_fonte()), max(8, px))
+
+
+@functools.lru_cache(maxsize=1)
+def _bytes_da_inter() -> bytes:
+    return (files("editor") / "recursos" / "Inter-Black.ttf").read_bytes()
+
+
+@functools.lru_cache(maxsize=64)
+def inter(px: int) -> ImageFont.FreeTypeFont:
+    """A Inter Black, a fonte da legenda em destaques."""
+    return ImageFont.truetype(io.BytesIO(_bytes_da_inter()), max(8, px))
+
+
+@functools.lru_cache(maxsize=512)
+def palavra_com_contorno(texto: str, px: int, cor: tuple, brilho: bool) -> Image.Image:
+    """A palavra com o contorno escuro e a sombra embaixo (``text-shadow`` do chat), e o
+    brilho da cor quando ``brilho``. ``info["origem"]`` é onde fica o pé da primeira
+    letra (a linha de base, à esquerda)."""
+    f = inter(px)
+    k = px / 92
+    contorno = max(2, round(6.5 * k))
+    sombra_y, sombra_raio = 12 * k, 13 * k
+    brilho_raio = 17 * k
+    margem = round(max(sombra_raio * 2 + sombra_y, brilho_raio * 2.5 if brilho else 0)) + 2
+    x0, y0, x1, y1 = f.getbbox(texto, anchor="ls", stroke_width=contorno)
+    largura, altura = round(x1 - x0) + 2 * margem, round(y1 - y0) + 2 * margem
+    origem = (margem - x0, margem - y0)
+    img = Image.new("RGBA", (largura, altura), (0, 0, 0, 0))
+    sombra = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    ImageDraw.Draw(sombra).text((origem[0], origem[1] + sombra_y), texto, font=f,
+                                fill=(0, 0, 0, 178), anchor="ls", stroke_width=contorno,
+                                stroke_fill=(0, 0, 0, 178))
+    img.alpha_composite(sombra.filter(ImageFilter.GaussianBlur(sombra_raio)))
+    if brilho:
+        halo = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        ImageDraw.Draw(halo).text(origem, texto, font=f, fill=cor, anchor="ls",
+                                  stroke_width=contorno, stroke_fill=cor)
+        img.alpha_composite(halo.filter(ImageFilter.GaussianBlur(brilho_raio)))
+    ImageDraw.Draw(img).text(origem, texto, font=f, fill=cor, anchor="ls",
+                             stroke_width=contorno, stroke_fill=(*TINTA, 255))
+    img.info["origem"] = origem
+    return img
+
+
+@functools.lru_cache(maxsize=64)
+def pilula(texto: str, px: int) -> Image.Image:
+    """A placa da frase de efeito: amarela, cantos de 26, com o brilho amarelo em volta
+    (``0 0 70px``) e o texto escuro em maiúsculas."""
+    f = inter(px)
+    k = px / 96
+    x0, _y0, x1, _y1 = f.getbbox(texto, anchor="ls")
+    sobe, desce = f.getmetrics()
+    largura = round(x1 - x0 + 2 * 38 * k)
+    altura = round(sobe + desce * 0.6 + 2 * 18 * k)
+    margem = round(70 * k)
+    img = Image.new("RGBA", (largura + 2 * margem, altura + 2 * margem), (0, 0, 0, 0))
+    halo = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    ImageDraw.Draw(halo).rounded_rectangle([margem, margem, margem + largura, margem + altura],
+                                           round(26 * k), fill=(*PILULA, 115))
+    img.alpha_composite(halo.filter(ImageFilter.GaussianBlur(35 * k)))
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle([margem, margem, margem + largura, margem + altura], round(26 * k),
+                        fill=(*PILULA, 255))
+    d.text((margem + largura / 2 - (x0 + x1) / 2, margem + altura / 2 + (sobe - desce) / 2
+            - desce * 0.2), texto, font=f, fill=(*TEXTO_DA_PILULA, 255), anchor="ls")
+    return img
 
 
 def _suave(x: float) -> float:
@@ -109,6 +197,7 @@ class Legenda:
 
     def __init__(self, largura: int, altura: int, *, vertical: bool, tamanho: float = 1.0):
         self.largura, self.altura = largura, altura
+        self.tamanho = tamanho
         curto = min(largura, altura)
         self.em = max(12, round(curto * (CORPO_VERTICAL if vertical else CORPO_HORIZONTAL)
                                 * tamanho))
@@ -142,12 +231,138 @@ class Legenda:
 
     # ── desenho ──────────────────────────────────────────────────────────
 
-    def desenhar(self, img: Image.Image, plano: Plano, t: float) -> None:
+    def desenhar(self, img: Image.Image, plano: Plano, t: float, base: float | None = None
+                 ) -> None:
+        """A linha do momento. ``base`` muda a altura dela (na janela, a legenda fica na
+        faixa abaixo da janela e acompanha quando ela cresce)."""
         for i, bloco in enumerate(plano.blocos):
             if bloco.inicio <= t < bloco.fim:
+                if bloco.tipo != "classica":
+                    self._pagina(img, bloco, t, base)
+                    return
                 adesivo = next((a for a in plano.adesivos if a.bloco == i), None)
-                self._bloco(img, bloco, t, adesivo)
+                if base is None:
+                    self._bloco(img, bloco, t, adesivo)
+                    return
+                antes = self.base, self.meio
+                self.base, self.meio = base, base - (antes[0] - antes[1])
+                try:
+                    self._bloco(img, bloco, t, adesivo)
+                finally:
+                    self.base, self.meio = antes
                 return
+
+    # ── os destaques ─────────────────────────────────────────────────────
+
+    def _escala_dos_destaques(self) -> float:
+        return min(self.largura, self.altura) / 1080 * self.tamanho
+
+    def corpo_da_pagina(self, bloco: Bloco) -> int:
+        """O corpo da página (``sizeFor`` do chat): a pílula numa linha, a página comum em
+        até duas; quanto mais letras, menor, entre os limites."""
+        k = self._escala_dos_destaques()
+        pilula_ = bloco.tipo == "pilula"
+        texto = bloco.texto.upper() if pilula_ else bloco.texto
+        util = self._largura_da_pagina()
+        disponivel = util - 76 * k if pilula_ else 2 * util
+        menor, maior = CORPO_DA_PILULA if pilula_ else CORPO_DA_LINHA
+        cabe = math.floor(disponivel / (max(1, len(texto)) * (0.68 if pilula_ else 0.55)))
+        px = max(round(menor * k), min(round(maior * k), cabe))
+        if pilula_:                      # e a pílula nunca passa da largura
+            while px > 12 and inter(px).getlength(texto) > disponivel:
+                px -= 2
+        else:                            # nem a página de duas linhas
+            while px > round(menor * k) and len(self.linhas_da_pagina(bloco, px)) > 2:
+                px -= 2
+        return px
+
+    def _largura_da_pagina(self) -> float:
+        k = self._escala_dos_destaques()
+        maximo = LARGURA_DA_PAGINA if self.largura <= self.altura else LARGURA_DA_PAGINA_DEITADA
+        return min(self.largura - 2 * 60 * k, maximo * k)
+
+    def linhas_da_pagina(self, bloco: Bloco, px: int) -> list[list[tuple[int, float]]]:
+        """As palavras da página em linhas (``flex-wrap``): cada uma com o vão de 0,16 em
+        de cada lado, e a linha quebrando quando não cabe mais."""
+        f = inter(px)
+        util = self._largura_da_pagina()
+        linhas: list[list[tuple[int, float]]] = [[]]
+        usado = 0.0
+        for i, w in enumerate(bloco.palavras):
+            caixa = f.getlength(w.texto) + 0.32 * px
+            if linhas[-1] and usado + caixa > util:
+                linhas.append([])
+                usado = 0.0
+            linhas[-1].append((i, caixa))
+            usado += caixa
+        return linhas
+
+    def _pagina(self, img: Image.Image, bloco: Bloco, t: float, base: float | None) -> None:
+        k = self._escala_dos_destaques()
+        px = self.corpo_da_pagina(bloco)
+        quadros = max(1, round((bloco.fim - bloco.inicio) / a.QUADRO))
+        sai = max(1, min(4, round(quadros * 0.18)))
+        saida = min(1.0, max(0.0, (bloco.fim - t) / (sai * a.QUADRO)))
+        sobe, desce = inter(px).getmetrics()
+        n = 1 if bloco.tipo == "pilula" else len(self.linhas_da_pagina(bloco, px))
+        altura = n * px * 1.05 + (40 * k if bloco.tipo == "pilula" else 0)
+        if base is not None:          # na janela: o meio da faixa
+            centro = base - (self.base - self.meio)
+        else:                         # sem ela: o pé da página na linha de sempre
+            centro = self.base + desce - n * px * 1.05 / 2
+        # Nunca abaixo do quadro, com a sombra: no quadrado, a faixa embaixo da janela não
+        # cabe duas linhas, e a página sobe por cima da borda dela (a segunda linha saía
+        # cortada).
+        sombra = (12 + 26) * px / 92
+        centro = min(centro, self.altura - 4 - sombra - altura / 2)
+        if bloco.tipo == "pilula":
+            self._pilula(img, bloco, t, px, centro, quadros, saida)
+        else:
+            self._linhas(img, bloco, t, px, k, centro, saida, sobe, desce)
+
+    def _pilula(self, camada: Image.Image, bloco: Bloco, t: float, px: int, centro: float,
+                quadros: int, saida: float) -> None:
+        pico = max(2, min(5, round(quadros * 0.22)))
+        assenta = max(3, min(11, round(quadros * 0.45)))
+        quadro = (t - bloco.inicio) / a.QUADRO
+        escala = a.interpolar(quadro, [0, pico, assenta], [0.68, 1.06, 1.0], a.SAIDA,
+                              escala=True)
+        placa = pilula(bloco.texto.upper(), px)
+        colar(camada, placa, self.largura / 2, centro, escala=escala, giro=-1.6,
+              opacidade=saida)
+
+    def _linhas(self, camada: Image.Image, bloco: Bloco, t: float, px: int, k: float,
+                centro: float, saida: float, sobe: int, desce: int) -> None:
+        linhas = self.linhas_da_pagina(bloco, px)
+        altura_da_linha = px * 1.05
+        topo = centro - len(linhas) * altura_da_linha / 2
+        estilos = bloco.estilos or [""] * len(bloco.palavras)
+        for n, linha in enumerate(linhas):
+            x = (self.largura - sum(c for _, c in linha)) / 2
+            pe = topo + n * altura_da_linha + (altura_da_linha - sobe - desce) / 2 + sobe
+            for i, caixa in linha:
+                w = bloco.palavras[i]
+                desde = t - w.inicio + ENTRA_S
+                if desde < 0:
+                    x += caixa
+                    continue
+                opacidade = min(1.0, desde / ENTRA_S) * saida
+                escala = a.interpolar(desde, [0.0, 0.12, 0.26], [0.55, 1.08, 1.0], a.SAIDA,
+                                      escala=True)
+                dita = w.inicio <= t < w.fim
+                estilo = estilos[i] if estilos[i] in PARADA else ""
+                cor = DITA[estilo] if dita else PARADA[estilo]
+                sprite = palavra_com_contorno(w.texto, px, cor, dita and estilo != "")
+                ox, oy = sprite.info["origem"]
+                largura_texto = caixa - 0.32 * px
+                # o centro da palavra (o pulo é em volta dele), na linha de base
+                cx = x + caixa / 2
+                cy = pe - (sobe - desce) / 2 - (SOBE_DITA * k if dita else 0.0)
+                dx = sprite.width / 2 - ox - largura_texto / 2
+                dy = sprite.height / 2 - oy + (sobe - desce) / 2
+                colar(camada, sprite, cx + dx * escala, cy + dy * escala, escala=escala,
+                      opacidade=opacidade)
+                x += caixa
 
     def _bloco(self, img: Image.Image, bloco: Bloco, t: float, adesivo: Adesivo | None) -> None:
         idade = t - bloco.inicio

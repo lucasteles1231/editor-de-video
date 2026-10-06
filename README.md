@@ -97,6 +97,28 @@ sugestões do Gemini, com uma chave grátis sua.
     camadas</a>.</td>
   </tr>
   <tr>
+    <td><img src="docs/img/funcoes/cenas.svg" width="44" alt=""></td>
+    <td><b>Biblioteca de cenas.</b> Opcional, na montagem. No lugar do vídeo de fundo, uma
+    pasta de clipes curtos e uma matriz que descreve cada um (o <code>cenas.json</code>).
+    O Gemini escolhe, trecho a trecho, as cenas que mostram o que está sendo dito; sem
+    ele, as palavras escolhem. A cena toca numa janela com câmera, e o personagem fica em
+    pé na borda dela. Veja <a href="#biblioteca-de-cenas">Biblioteca de cenas</a>.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/img/funcoes/cartoes.svg" width="44" alt=""></td>
+    <td><b>Cartões animados e legenda em destaques.</b> Opcional, com o Gemini. Selo,
+    lista, quadro, enquete, carimbo, número e flash entram na palavra em que o assunto é
+    dito, cada um com o seu som. A legenda pode vir em páginas de até 4 palavras, com os
+    nomes em ciano, as expressões em rosa e a frase de efeito numa pílula amarela. Veja
+    <a href="#cartões-animados">Cartões animados</a>.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/img/funcoes/voz.svg" width="44" alt=""></td>
+    <td><b>Voz e bipe.</b> A voz pode sair limpa (sem eco, sem chiado e no mesmo volume em
+    todas as partes) ou de estúdio. As palavras proibidas ganham um bipe numa sílaba e
+    asteriscos na legenda: "coca**na". Veja <a href="#voz-e-bipe">Voz e bipe</a>.</td>
+  </tr>
+  <tr>
     <td><img src="docs/img/funcoes/icones.svg" width="44" alt=""></td>
     <td><b>Ícones automáticos.</b> 122 ícones (Tabler) com traço de caneta, que aparecem
     quando a palavra é dita, inclusive no plural e com sinônimo ("grana" vira dinheiro, "pix"
@@ -112,8 +134,9 @@ sugestões do Gemini, com uma chave grátis sua.
   <tr>
     <td><img src="docs/img/funcoes/presets.svg" width="44" alt=""></td>
     <td><b>Presets.</b> Short de gameplay, de vlog e de review, explicação técnica, humor,
-    motivacional, corte de podcast e aula. Um clique muda o ritmo, os sons, a legenda, a
-    saída e a thumbnail, e tudo continua editável. Veja <a href="#presets">Presets</a>.</td>
+    motivacional, corte de podcast, aula e notícia com cenas. Um clique muda o ritmo, os
+    sons, a legenda, a voz, a saída e a thumbnail, e tudo continua editável. Veja
+    <a href="#presets">Presets</a>.</td>
   </tr>
   <tr>
     <td><img src="docs/img/funcoes/thumbnail.svg" width="44" alt=""></td>
@@ -132,11 +155,13 @@ sugestões do Gemini, com uma chave grátis sua.
   </tr>
 </table>
 
-A edição do vídeo não usa IA generativa: cada decisão segue uma regra fixa, e o mesmo
-vídeo sai sempre igual. As IAs que rodam são o Whisper, que transcreve a fala, e o MODNet,
-que recorta a pessoa para a thumbnail e para a montagem em camadas, as duas no seu
-computador.
-O Gemini só entra se você colar uma chave e ligar as sugestões.
+A edição do vídeo segue regras fixas, e o mesmo vídeo sai sempre igual. As IAs que rodam
+no seu computador são o Whisper, que transcreve a fala, e o MODNet, que recorta a pessoa
+para a thumbnail e para a montagem em camadas.
+O Gemini só entra se você colar uma chave: nas ideias de thumbnail e, quando ligado, no
+roteiro (as cenas da biblioteca, os cartões animados e os destaques da legenda). O
+roteiro custa um ou dois pedidos de texto da cota grátis por vídeo, e o resultado diz
+quantos foram.
 
 ## A interface
 
@@ -163,20 +188,23 @@ escolher as edições, escolher a saída e, se quiser, a thumbnail.
 
 <img src="docs/img/interface-progresso.png" alt="O progresso da edição, etapa por etapa, com o tempo que falta" width="300" align="right">
 
-- **Envio:** um vídeo só, ou a montagem em camadas: o fundo, a pessoa ou o personagem, e
-  a escolha de onde vem o áudio (o fundo, a pessoa ou um arquivo separado). Embaixo, onde
-  você vai postar: o editor recomenda pelo formato do vídeo.
-- **Edições:** comece por um preset e ajuste o que quiser: cada efeito, o ritmo, a pausa,
-  o zoom e os sons, com um botão para ouvir cada tema.
-- **Legenda:** o idioma da fala, o tamanho do modelo, o tamanho da letra, quantas letras
-  cabem numa linha e se quer o `.srt` e o `.vtt`.
+- **Envio:** um vídeo só, ou a montagem em camadas: o fundo (um vídeo ou a biblioteca de
+  cenas), a pessoa, o personagem ou nada por cima, e a escolha de onde vem o áudio (o
+  fundo, a pessoa ou arquivos separados). Embaixo, onde você vai postar: o editor
+  recomenda pelo formato do vídeo.
+- **Edições:** comece por um preset e ajuste o que quiser: cada efeito, a janela com
+  câmera, os cartões animados, a voz, o bipe, o ritmo, a pausa, o zoom e os sons, com um
+  botão para ouvir cada tema.
+- **Legenda:** o idioma da fala, o tamanho do modelo, o estilo (clássico ou destaques), o
+  tamanho da letra, quantas letras cabem numa linha e se quer o `.srt` e o `.vtt`.
 - **Saída:** a extensão (MP4, MOV, WebM, MKV ou GIF), o codec, a resolução, os quadros por
   segundo e a qualidade. Só aparece o que o seu computador consegue gravar.
 - **Só os primeiros 15 s:** uma prévia rápida para conferir o estilo antes de editar o vídeo
   inteiro.
 - **Progresso:** cada etapa, com o tempo que falta, e um botão de cancelar.
 - **Resultado:** assista, baixe o vídeo, as legendas e as thumbnails, ou abra a pasta onde
-  tudo foi salvo.
+  tudo foi salvo. Com o roteiro do Gemini, ele diz quantas cenas e cartões vieram e
+  quantos pedidos da cota foram usados; sem ele, por quê.
 
 Funciona no Chrome, no Edge, no Firefox e no Safari, no tema claro ou escuro, o mesmo do
 seu sistema.
@@ -273,19 +301,23 @@ separados. No passo 1, escolha **Um fundo e, por cima, você ou um personagem**:
   <img src="docs/img/interface-montagem.png" alt="O passo 1 na montagem: o vídeo de fundo, o personagem de palito por cima e a narração à parte" width="640">
 </p>
 
-- **O vídeo de fundo:** sem pessoa. Ele começa junto com a fala e, se for mais curto,
-  volta ao começo.
+- **O fundo:** um vídeo sem pessoa, que começa junto com a fala e, se for mais curto,
+  volta ao começo; ou a [biblioteca de cenas](#biblioteca-de-cenas).
 - **Por cima, o vídeo da pessoa:**
   - se ele já vem sem fundo (WebM VP9 ou MOV com transparência), vale o recorte do
     próprio arquivo, sem custo nenhum;
   - senão, o MODNet recorta o vídeo inteiro no seu computador, e a página mostra quanto
     tempo isso leva.
-- **Ou por cima, um personagem animado:** um GIF, PNG animado ou WebP, em loop do começo
-  ao fim. Se ele tem um fundo de cor única, essa cor sai.
-- **O áudio vem de:** você escolhe entre o vídeo de fundo, o vídeo da pessoa ou um áudio
-  separado (MP3, WAV ou M4A). Com o personagem, que não tem som, as opções são o fundo e
-  o áudio separado. É desse áudio que saem a legenda e os cortes, e um vídeo sem som fica
-  com a opção desligada.
+- **Ou por cima, um personagem animado:** um GIF, PNG animado ou WebP de até 64 MB, em
+  loop do começo ao fim. Se ele tem um fundo de cor única, essa cor sai.
+- **Ou nada por cima:** só o fundo, com a legenda e as animações.
+- **O áudio vem de:** você escolhe entre o vídeo de fundo, o vídeo da pessoa ou áudios
+  separados (MP3, WAV ou M4A). Com o personagem, que não tem som, as opções são o fundo e
+  o áudio separado; com a biblioteca de cenas, a pessoa e o áudio separado. É desse áudio
+  que saem a legenda e os cortes, e um vídeo sem som fica com a opção desligada.
+- **Vários áudios** (um por parágrafo, por exemplo) tocam na ordem do nome ("Parte 2"
+  antes de "Parte 10"), com as pontas aparadas e 0,3 s entre eles. Cada um é transcrito
+  à parte, e a transcrição fica guardada por arquivo.
 - **O formato do quadro** segue a plataforma escolhida no passo 1, e dá para trocar no
   passo 4: igual ao fundo, em pé, deitado ou quadrado. O fundo entra inteiro, e as sobras
   ficam com ele mesmo, desfocado.
@@ -293,6 +325,80 @@ separados. No passo 1, escolha **Um fundo e, por cima, você ou um personagem**:
 A pessoa (ou o personagem) começa embaixo no meio, em pé, ou embaixo à direita, deitado e
 quadrado. Em alguns cortes, ela anda: com um ícone, para o lado oposto ao dele; com uma
 palavra saltando, para perto. **Mover a pessoa**, no passo 2, desliga isso.
+
+### Biblioteca de cenas
+
+Para um vídeo narrado sobre um assunto com muitas imagens (um trailer, uma notícia, um
+jogo), o fundo pode ser uma biblioteca: uma pasta de clipes curtos, de uns 2 s, e uma
+matriz que descreve cada um. No passo 1, em **O fundo**, escolha **Biblioteca de cenas** e
+arraste a pasta (as subpastas também valem). A matriz que estiver dentro dela, o
+`cenas.json`, entra junto; se não estiver, a página pede em seguida.
+
+A matriz é uma lista em JSON, ou `{"cenas": [...]}`:
+
+```json
+[
+  {
+    "arquivo": "clipes/t1-014-explosao.mp4",
+    "descricao": "Carro explode numa rodovia à noite",
+    "categorias": ["acao", "carro"],
+    "personagens": ["Jason"],
+    "energia": "alta",
+    "monetizacao": "ok",
+    "obs": "logo do jogo no canto de cima"
+  }
+]
+```
+
+| Campo | O que é |
+|---|---|
+| `arquivo` | o clipe, casado pelo nome do arquivo (a pasta não importa). Obrigatório |
+| `descricao` | o que aparece nele. Obrigatório |
+| `id` | um nome curto; sem ele, vale o nome do arquivo |
+| `categorias`, `personagens` | listas, ou texto com vírgulas, que ajudam a escolher |
+| `energia` | `baixa`, `media` ou `alta`: o começo do vídeo pede cena forte |
+| `monetizacao` | `ok`, `cuidado` (no máximo duas no vídeo) ou `evitar` (nunca entra) |
+| `obs` | um aviso para quem escolhe, como uma data antiga num logo |
+
+A página mostra a ficha: quantas cenas entraram, quantas ficaram de fora por "evitar",
+quais clipes não têm descrição e quais descrições não têm clipe.
+
+A fala é dividida em trechos de 2 a 6 s, fechados no fim das frases, e cada trecho ganha
+uma cena a cada 2 s, mais ou menos:
+
+- **Com o Gemini,** ele lê a fala, os trechos e a matriz, e escolhe as cenas que mostram o
+  que está sendo dito: sem repetir, sem as "evitar", com no máximo duas "cuidado" e longe
+  dos assuntos sensíveis. O editor confere a resposta, e o que vier errado volta para
+  conserto uma vez.
+- **Sem o Gemini** (sem chave, sem cota ou fora do ar), as palavras de cada trecho são
+  casadas com a descrição, as categorias e os personagens, no plural e com acento ou sem.
+  Sem casamento, entram as cenas ainda não usadas, e o começo pede uma de energia alta.
+
+A trilha segue o vídeo editado: o corte de um silêncio não faz a cena pular. O som dos
+clipes não entra. A capa da biblioteca, uma cena de energia alta, é o vídeo de onde a
+thumbnail tira os quadros.
+
+### Janela e câmera
+
+Com **Janela e câmera** ligada no passo 2, a cena vai numa janela 16:9, com uma câmera
+que empurra e mira, e o personagem fica em pé na borda dela.
+
+| Formato | A janela | O personagem | A legenda |
+|---|---|---|---|
+| **Em pé** | na largura toda; no foco, cresce até a metade da altura | grande no centro, ou menor num canto | na faixa abaixo da janela |
+| **Quadrado** | 92% da largura; no foco, a largura toda | na borda de cima, menor | abaixo da janela |
+| **Deitado** | o quadro inteiro; o foco é a câmera empurrando | embaixo, num canto | embaixo, por cima da cena |
+
+- **Atrás da janela,** a própria cena, desfocada e escurecida.
+- **A câmera** cobre a janela, empurra e mira um ponto da cena, sem nunca mostrar a borda
+  dela. Cada mudança leva 11 quadros e parte de onde a anterior estava.
+- **Quem decide** é um diretor com regras. Num carimbo ou num número, a janela fica no
+  padrão para mostrar o cartão inteiro e, no momento forte, a câmera empurra até ele e
+  volta. Uma lista ou uma enquete pedem o foco, com o personagem trocando de lado a cada
+  item. Sem cartão, os zooms do plano viram foco e padrão.
+- **O personagem** dá um pulinho quando troca de lugar, balança enquanto fala e só mexe a
+  boca durante a fala. Nas pausas, fica o primeiro quadro do GIF: deixe a boca fechada
+  nele.
 
 ## Presets
 
@@ -311,13 +417,89 @@ editável, e mexer em qualquer um troca a marca para **Personalizado**.
 | **Motivacional** | frases de impacto | legenda grande, de 14 letras, e sons épicos |
 | **Corte de podcast** | conversa que respira | pausa de 0,80 s, respiro de 0,25 s, ritmo 0,6×, quase nenhum som e a pessoa parada |
 | **Aula ou tutorial longo** | vídeo longo | ritmo 0,5×, legenda de 36 letras, poucos efeitos e a pessoa parada |
+| **Notícia com cenas** | narração sobre um assunto com muitas imagens | janela e câmera, cartões animados, legenda em destaques, voz de estúdio, uma lista de bipe de exemplo, pausa de 0,35 s, ritmo 1,2× e sons de videogame |
 
 - **O formato** (em pé ou deitado) não é do preset: vem da plataforma escolhida no passo
   1. O preset muda o estilo, e o modelo e a cor da thumbnail.
 - **O ritmo** multiplica quantos adesivos, ícones, zooms e sons entram. Em 2×, entra o
   dobro, mais perto um do outro; em 0,5×, a metade.
 - **O respiro** é o silêncio que fica no lugar de uma pausa cortada.
+- **Nos outros presets,** menos no padrão, a voz sai limpa. Os de gameplay, review,
+  explicação técnica, humor, motivacional e aula também ligam os cartões animados. A
+  janela fica ligada em todos, mas só aparece na montagem.
 - **No terminal,** é `--preset gameplay`. Veja [No terminal](#no-terminal).
+
+## Cartões animados
+
+Com **Cartões animados** ligado no passo 2 e a chave do Gemini colada, ele lê a fala e
+escreve os cartões, cada um preso à palavra em que o assunto é dito. Eles vieram de um
+vídeo de notícia feito à mão no Remotion, e são desenhados aqui, quadro a quadro, com as
+mesmas curvas e medidas:
+
+| Cartão | O que faz | Som |
+|---|---|---|
+| **Selo** | uma etiqueta inclinada que entra com um pulo ("SEM CENSURA", "SEGUE PRA MAIS"); a do começo do vídeo cai carimbada | pop; o do começo, boom |
+| **Lista** | de 2 a 4 itens que entram pela esquerda, cada um na sua palavra | whoosh e um clique por item |
+| **Quadro** | um título e de 2 a 5 linhas (nome e valor) que entram uma a uma; a linha falada fica acesa | whoosh e um clique por linha |
+| **Enquete** | dois botões, o certo e o errado, e depois o "COMENTA AÍ" | um clique por botão |
+| **Carimbo** | um cartão que leva um carimbo vermelho ("APAGADA"), com tremida | whoosh e erro |
+| **Destaque** | um número ou uma data grande que cai carimbado ("+18", "19 DE NOVEMBRO") | boom; na data, ding |
+| **Flash** | o flash branco de uma foto e um selo ("FÃS PRINTARAM") | obturador |
+
+- **O tempo:** tudo entra 100 ms antes da palavra, o que na tela lê como "no tempo".
+- **Quantos:** um a cada 5 a 8 s de fala, sem sobrepor: o seguinte só entra depois do
+  último item do anterior. O vídeo começa com um selo de gancho e, se a fala pede para
+  seguir ou comentar, termina com outro.
+- **Conferidos:** o editor confere cada cartão (o modelo, os campos, as palavras em
+  ordem). O que vier errado volta para o Gemini uma vez, e o que continuar errado sai.
+- **Sem o Gemini,** não há cartões: ficam os adesivos de palavra, e o resultado diz por
+  quê.
+- **Sem a janela** (no vídeo único ou na montagem de sempre), os cartões ficam no meio do
+  quadro, longe da legenda.
+- **Sem emoji colorido,** que o Pillow não desenha: no lugar dele vai um dos 122 ícones do
+  editor, no traço de caneta.
+
+## A legenda em destaques
+
+No passo 3, o **Estilo** da legenda pode ser o clássico (uma linha em karaokê) ou
+**Destaques**:
+
+- até 4 palavras por página, em até duas linhas, na fonte Inter Black com contorno escuro;
+- cada palavra entra 80 ms antes de ser dita, com um pulo, e a que está sendo dita sobe e
+  acende;
+- os nomes de pessoas, marcas e lugares ficam em ciano, e as expressões fortes, em rosa;
+- a frase de efeito ("nota 18", "passou do ponto?") entra sozinha numa pílula amarela.
+
+Quem marca as cores e as pílulas é o Gemini, no mesmo pedido dos cartões. Sem ele, os
+nomes próprios ficam em ciano, os números e a palavra mais longa de cada trecho em rosa, e
+não há pílula. Os adesivos de palavra são da legenda clássica.
+
+## Voz e bipe
+
+**A voz** (passo 2) tem três níveis:
+
+| Nível | O que faz |
+|---|---|
+| **Original** | a voz como foi gravada |
+| **Limpa** | corta o grave, apara as pontas, tira o eco do cômodo e o chiado, deixa cada parte em −20 LUFS e, no fim, segura o "sss", comprime de leve e entrega em −15 LUFS |
+| **Estúdio** | a limpa, mais um equalizador com brilho, a compressão em duas etapas e a voz aberta em estéreo |
+
+Os filtros são os do FFmpeg que vem dentro do PyAV, e nada precisa ser instalado. Com
+vários áudios, cada um é tratado e nivelado à parte: no vídeo de teste, cinco parágrafos
+gravados com até 5 dB de diferença saíram a 1,2 dB um do outro.
+
+**O bipe** esconde uma sílaba de cada palavra da lista (passo 2, separadas por vírgula):
+a do meio, nunca a primeira, com um tom de 1 kHz e a voz zerada por baixo. A legenda e os
+cartões mostram a mesma sílaba em asteriscos: "coca\*\*na", "se\*\*".
+
+- **O plural e o acento contam:** "sexo" também pega "sexos".
+- **A lista vai de dica para o Whisper.** Sem ela, o modelo `small` ouvia "coca ainda" no
+  lugar de "cocaína", e a palavra escapava do bipe.
+- **A sílaba é estimada:** o começo e o fim da palavra são medidos no áudio, e as sílabas
+  são divididas pelo número de letras, com uma folga de 30 ms de cada lado. É menos
+  preciso que um alinhador fonético, que não cabe num editor leve. No vídeo de teste,
+  transcrito de novo depois do bipe, o Whisper não reconheceu nenhuma das seis palavras.
+- **Nenhum efeito sonoro** toca em cima de um bipe.
 
 ## Efeitos sonoros
 
@@ -497,6 +679,9 @@ editar video.mp4 --tema-dos-sons humor --som-nos-cortes
 editar video.mp4 --sem-zoom --sem-sons            # sem zoom e sem efeitos sonoros
 editar eu.mp4 --fundo tela.mp4 --quadro vertical  # você por cima da tela gravada, em pé
 editar --fundo jogo.mp4 --personagem boneco.gif --audio narracao.m4a
+editar --cenas cenas/ --matriz cenas/cenas.json --audio p1.m4a p2.m4a p3.m4a \
+       --personagem boneco.gif --preset noticia --quadro vertical
+editar video.mp4 --voz limpa --bipe "palavra, outra"  # voz limpa e bipe na lista
 editar eu.mp4 --fundo aula.mp4 --fala fundo        # o som vem da aula, e não da câmera
 editar talk.mp4 --idioma en --modelo medium       # fala em inglês, modelo maior
 editar video.mp4 -o final.mov --codec prores      # ProRes, para levar a outro editor
@@ -509,7 +694,7 @@ editar --formatos                                 # o que este computador grava
 | Opção | O que faz | Padrão |
 |---|---|---|
 | `-o`, `--saida` | onde gravar | `<nome>-editado.<ext>` |
-| `--preset` | o ponto de partida: `padrao`, `gameplay`, `vlog`, `review`, `tecnico`, `humor`, `motivacional`, `podcast` ou `aula` | `padrao` |
+| `--preset` | o ponto de partida: `padrao`, `gameplay`, `vlog`, `review`, `tecnico`, `humor`, `motivacional`, `podcast`, `aula` ou `noticia` | `padrao` |
 | `--presets` | mostra os presets | |
 | `--sem-cortes` | não corta os silêncios | |
 | `--sem-zoom` | sem zoom de ênfase | |
@@ -528,10 +713,17 @@ editar --formatos                                 # o que este computador grava
 | `--volume-dos-sons N` | de `0.3` a `1.5` | `1` |
 | `--som-nos-cortes` | um clique baixo em cada corte | |
 | `--sem-sons-por-palavra` | sem o som de cada palavra ("dinheiro" e as moedas) | |
+| `--animacoes` | os cartões animados, escritos pelo Gemini | |
+| `--legenda` | `classica` ou `destaques` | `classica` |
+| `--voz` | `original`, `limpa` ou `estudio` | `original` |
+| `--bipe PALAVRAS` | as palavras proibidas, separadas por vírgula | |
 | `--fundo` | a montagem: o vídeo de fundo, sem pessoa | |
+| `--cenas PASTA` | a montagem com a biblioteca de cenas: a pasta dos clipes | |
+| `--matriz ARQUIVO` | a matriz da biblioteca (o `cenas.json`) | |
+| `--janela`, `--sem-janela` | a cena numa janela 16:9 com câmera | sem |
 | `--pessoa` | o vídeo de você falando, por cima do fundo | o vídeo do argumento |
 | `--personagem` | um GIF, PNG animado ou WebP, em loop por cima | |
-| `--audio` | um áudio separado (a narração gravada à parte) | |
+| `--audio` | um ou vários áudios separados (a narração gravada à parte), tocados em ordem | |
 | `--fala` | de onde vem o áudio: `fundo`, `pessoa` ou `audio` | o `--audio`; senão a pessoa, se tiver som; senão o fundo |
 | `--recorte` | `transparente` (o vídeo já vem sem fundo) ou `modnet` | detectado no arquivo |
 | `--quadro` | `fundo`, `vertical`, `horizontal` ou `quadrado` | `fundo` |
@@ -583,6 +775,7 @@ flowchart TD
     P --> T[thumbnail, desenhada no navegador]
     R[recorte da pessoa, com o MODNet] --> T
     G[ideias do Gemini, se você ligar] -.-> T
+    R2[roteiro do Gemini, se você ligar: cenas, cartões e destaques] -.-> P
     D --> S([vídeo editado + .srt + .vtt])
     T --> I([PNG e JPG])
 ```
@@ -596,7 +789,9 @@ flowchart TD
    costuma marcar o fim da palavra cedo e o começo da seguinte muito cedo, e o corte no
    tempo dele comeria sílabas ou deixaria meia pausa.
 4. O **plano** decide, por regras, cada linha de legenda, cada adesivo, zoom, ícone e
-   som e, na montagem, onde a pessoa anda. Ele vai junto do vídeo, como `.plano.json`.
+   som e, na montagem, onde a pessoa anda. Com o roteiro ligado, as cenas, os cartões e
+   os destaques da legenda vêm do Gemini, conferidos pelo editor. Ele vai junto do vídeo,
+   como `.plano.json`.
 5. Cada quadro é **desenhado** em Python e gravado no formato escolhido. O áudio recebe
    uma transição de 8 ms em cada corte, para não estalar. Na montagem, o fundo e quem
    vai por cima começam juntos, e os cortes valem para os dois.

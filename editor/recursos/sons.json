@@ -1,115 +1,415 @@
 {
   "fonte": "Kenney (www.kenney.nl), pacotes Interface Sounds, Impact Sounds, UI Audio, Digital Audio, RPG Audio e Music Jingles",
   "licenca": "CC0 1.0 (licencas/Kenney-CC0.txt)",
-  "sintetizados": ["pop", "whoosh"],
-  "ganhos": {"aparicao": 1.0, "transicao": 0.75, "corte": 0.45, "palavra": 1.0},
+  "sintetizados": [
+    "pop",
+    "whoosh"
+  ],
+  "ganhos": {
+    "aparicao": 1.0,
+    "transicao": 0.75,
+    "corte": 0.45,
+    "palavra": 1.0
+  },
   "temas": {
     "padrao": {
       "titulo": "Padrão",
-      "aparicao": ["pop"],
-      "transicao": ["whoosh"],
-      "corte": ["tick_002"]
+      "aparicao": [
+        "pop"
+      ],
+      "transicao": [
+        "whoosh"
+      ],
+      "corte": [
+        "tick_002"
+      ]
     },
     "suave": {
       "titulo": "Suave",
-      "aparicao": ["pluck_001", "drop_002", "pluck_002", "glass_003"],
-      "transicao": ["whoosh", "maximize_004"],
-      "corte": ["tick_004", "drop_001"]
+      "aparicao": [
+        "pluck_001",
+        "drop_002",
+        "pluck_002",
+        "glass_003"
+      ],
+      "transicao": [
+        "whoosh",
+        "maximize_004"
+      ],
+      "corte": [
+        "tick_004",
+        "drop_001"
+      ]
     },
     "gameplay": {
       "titulo": "Gameplay",
-      "aparicao": ["pepSound3", "highUp", "pepSound1", "phaseJump2"],
-      "transicao": ["phaserUp2", "phaserUp7", "laser3"],
-      "corte": ["select_002", "tick_002", "select_007", "click_005"]
+      "aparicao": [
+        "pepSound3",
+        "highUp",
+        "pepSound1",
+        "phaseJump2"
+      ],
+      "transicao": [
+        "phaserUp2",
+        "phaserUp7",
+        "laser3"
+      ],
+      "corte": [
+        "select_002",
+        "tick_002",
+        "select_007",
+        "click_005"
+      ]
     },
     "review": {
       "titulo": "Review",
-      "aparicao": ["select_003", "confirmation_001", "select_005", "drop_003"],
-      "transicao": ["maximize_002", "minimize_002"],
-      "corte": ["select_001"]
+      "aparicao": [
+        "select_003",
+        "confirmation_001",
+        "select_005",
+        "drop_003"
+      ],
+      "transicao": [
+        "maximize_002",
+        "minimize_002"
+      ],
+      "corte": [
+        "select_001"
+      ]
     },
     "tecnico": {
       "titulo": "Técnico",
-      "aparicao": ["tick_004", "glass_002", "select_007", "click_003"],
-      "transicao": ["maximize_008", "minimize_008"],
-      "corte": ["tick_001"]
+      "aparicao": [
+        "tick_004",
+        "glass_002",
+        "select_007",
+        "click_003"
+      ],
+      "transicao": [
+        "maximize_008",
+        "minimize_008"
+      ],
+      "corte": [
+        "tick_001"
+      ]
     },
     "humor": {
       "titulo": "Humor",
-      "aparicao": ["bong_001", "phaseJump1", "pluck_002", "phaseJump5"],
-      "transicao": ["scratch_001", "scratch_005", "scratch_002"],
-      "corte": ["drop_004", "pluck_001"]
+      "aparicao": [
+        "bong_001",
+        "phaseJump1",
+        "pluck_002",
+        "phaseJump5"
+      ],
+      "transicao": [
+        "scratch_001",
+        "scratch_005",
+        "scratch_002"
+      ],
+      "corte": [
+        "drop_004",
+        "pluck_001"
+      ]
     },
     "epico": {
       "titulo": "Épico",
-      "aparicao": ["impactPunch_medium_000", "impactMetal_heavy_002", "impactPunch_medium_001"],
-      "transicao": ["whoosh", "impactSoft_heavy_003"],
-      "corte": ["impactMetal_medium_004"]
+      "aparicao": [
+        "impactPunch_medium_000",
+        "impactMetal_heavy_002",
+        "impactPunch_medium_001"
+      ],
+      "transicao": [
+        "whoosh",
+        "impactSoft_heavy_003"
+      ],
+      "corte": [
+        "impactMetal_medium_004"
+      ]
     }
   },
   "familias": {
     "moedas": {
-      "sons": ["handleCoins", "handleCoins2"],
-      "icones": ["dinheiro", "moeda", "cofrinho"],
-      "palavras": ["dinheiro", "grana", "pix", "preco", "lucro", "moeda", "reais", "dolar", "salario",
-                   "pagar", "pagamento", "comprar", "vender", "venda", "caro", "barato", "desconto",
-                   "promocao", "economizar", "rico", "riqueza", "investir", "investimento"]
+      "sons": [
+        "handleCoins",
+        "handleCoins2"
+      ],
+      "icones": [
+        "dinheiro",
+        "moeda",
+        "cofrinho"
+      ],
+      "palavras": [
+        "dinheiro",
+        "grana",
+        "pix",
+        "preco",
+        "lucro",
+        "moeda",
+        "reais",
+        "dolar",
+        "salario",
+        "pagar",
+        "pagamento",
+        "comprar",
+        "vender",
+        "venda",
+        "caro",
+        "barato",
+        "desconto",
+        "promocao",
+        "economizar",
+        "rico",
+        "riqueza",
+        "investir",
+        "investimento"
+      ]
     },
     "erro": {
-      "sons": ["error_004", "error_007", "error_002"],
-      "icones": ["errado"],
-      "palavras": ["errado", "erro", "errou", "falhou", "falha", "problema", "bug", "quebrou",
-                   "proibido", "pessimo"]
+      "sons": [
+        "error_004",
+        "error_007",
+        "error_002"
+      ],
+      "icones": [
+        "errado"
+      ],
+      "palavras": [
+        "errado",
+        "erro",
+        "errou",
+        "falhou",
+        "falha",
+        "problema",
+        "bug",
+        "quebrou",
+        "proibido",
+        "pessimo"
+      ]
     },
     "acerto": {
-      "sons": ["confirmation_004", "confirmation_002"],
-      "icones": ["certo"],
-      "palavras": ["certo", "correto", "acertou", "acertei", "perfeito", "funcionou", "funciona",
-                   "exatamente", "aprovado", "resolvido", "consegui", "conseguiu"]
+      "sons": [
+        "confirmation_004",
+        "confirmation_002"
+      ],
+      "icones": [
+        "certo"
+      ],
+      "palavras": [
+        "certo",
+        "correto",
+        "acertou",
+        "acertei",
+        "perfeito",
+        "funcionou",
+        "funciona",
+        "exatamente",
+        "aprovado",
+        "resolvido",
+        "consegui",
+        "conseguiu"
+      ]
     },
     "impacto": {
-      "sons": ["impactPunch_heavy_002", "impactPunch_heavy_000", "impactMetal_heavy_000"],
+      "sons": [
+        "impactPunch_heavy_002",
+        "impactPunch_heavy_000",
+        "impactMetal_heavy_000"
+      ],
       "icones": [],
-      "palavras": ["bomba", "explodiu", "explosao", "incrivel", "absurdo", "chocante", "boom",
-                   "impacto", "brutal", "insano", "surreal"]
+      "palavras": [
+        "bomba",
+        "explodiu",
+        "explosao",
+        "incrivel",
+        "absurdo",
+        "chocante",
+        "boom",
+        "impacto",
+        "brutal",
+        "insano",
+        "surreal"
+      ]
     },
     "velocidade": {
-      "sons": ["whoosh", "maximize_009"],
-      "icones": ["foguete"],
-      "palavras": ["rapido", "rapida", "correr", "voar", "voando", "acelerar", "velocidade",
-                   "instantaneo"]
+      "sons": [
+        "whoosh",
+        "maximize_009"
+      ],
+      "icones": [
+        "foguete"
+      ],
+      "palavras": [
+        "rapido",
+        "rapida",
+        "correr",
+        "voar",
+        "voando",
+        "acelerar",
+        "velocidade",
+        "instantaneo"
+      ]
     },
     "digitar": {
-      "sons": ["teclas"],
-      "icones": ["codigo"],
-      "palavras": ["digitar", "digitando", "codigo", "programar", "programacao", "teclado",
-                   "script", "comando", "terminal"]
+      "sons": [
+        "teclas"
+      ],
+      "icones": [
+        "codigo"
+      ],
+      "palavras": [
+        "digitar",
+        "digitando",
+        "codigo",
+        "programar",
+        "programacao",
+        "teclado",
+        "script",
+        "comando",
+        "terminal"
+      ]
     },
     "tempo": {
-      "sons": ["tique-taque"],
-      "icones": ["relogio", "ampulheta"],
-      "palavras": ["relogio", "minuto", "minutos", "horas", "prazo", "atrasado", "cronometro"]
+      "sons": [
+        "tique-taque"
+      ],
+      "icones": [
+        "relogio",
+        "ampulheta"
+      ],
+      "palavras": [
+        "relogio",
+        "minuto",
+        "minutos",
+        "horas",
+        "prazo",
+        "atrasado",
+        "cronometro"
+      ]
     },
     "vitoria": {
-      "sons": ["jingles_NES12", "jingles_PIZZI02"],
-      "icones": ["trofeu", "medalha", "coroa"],
-      "palavras": ["ganhou", "ganhei", "venceu", "venci", "vitoria", "campeao", "conquista",
-                   "conquistou", "sucesso"]
+      "sons": [
+        "jingles_NES12",
+        "jingles_PIZZI02"
+      ],
+      "icones": [
+        "trofeu",
+        "medalha",
+        "coroa"
+      ],
+      "palavras": [
+        "ganhou",
+        "ganhei",
+        "venceu",
+        "venci",
+        "vitoria",
+        "campeao",
+        "conquista",
+        "conquistou",
+        "sucesso"
+      ]
     },
     "derrota": {
-      "sons": ["jingles_NES11", "jingles_PIZZI01"],
+      "sons": [
+        "jingles_NES11",
+        "jingles_PIZZI01"
+      ],
       "icones": [],
-      "palavras": ["perdeu", "perdi", "derrota", "fracasso", "fracassou", "desistiu"]
+      "palavras": [
+        "perdeu",
+        "perdi",
+        "derrota",
+        "fracasso",
+        "fracassou",
+        "desistiu"
+      ]
     },
     "pergunta": {
-      "sons": ["question_002", "question_001"],
+      "sons": [
+        "question_002",
+        "question_001"
+      ],
       "icones": [],
       "palavras": []
     }
   },
   "sequencias": {
-    "teclas": {"sons": ["click_002", "click_005", "click_003", "click_004", "click_005"], "passo": 0.075},
-    "tique-taque": {"sons": ["tick_004", "tick_002", "tick_004"], "passo": 0.32}
+    "teclas": {
+      "sons": [
+        "click_002",
+        "click_005",
+        "click_003",
+        "click_004",
+        "click_005"
+      ],
+      "passo": 0.075
+    },
+    "tique-taque": {
+      "sons": [
+        "tick_004",
+        "tick_002",
+        "tick_004"
+      ],
+      "passo": 0.32
+    },
+    "obturador": {
+      "sons": [
+        "click_004",
+        "click_002"
+      ],
+      "passo": 0.045
+    }
   },
-  "longos": ["jingles_NES11", "jingles_NES12", "jingles_PIZZI01", "jingles_PIZZI02", "teclas", "tique-taque"]
+  "longos": [
+    "jingles_NES11",
+    "jingles_NES12",
+    "jingles_PIZZI01",
+    "jingles_PIZZI02",
+    "teclas",
+    "tique-taque"
+  ],
+  "cartoes": {
+    "selo": {
+      "sons": [
+        "pop"
+      ],
+      "ganho": 1.0
+    },
+    "entrada": {
+      "sons": [
+        "whoosh"
+      ],
+      "ganho": 0.75
+    },
+    "item": {
+      "sons": [
+        "click_005",
+        "click_003"
+      ],
+      "ganho": 0.7
+    },
+    "erro": {
+      "sons": [
+        "error_004"
+      ],
+      "ganho": 0.8
+    },
+    "boom": {
+      "sons": [
+        "impactPunch_heavy_000"
+      ],
+      "ganho": 0.9
+    },
+    "ding": {
+      "sons": [
+        "confirmation_004"
+      ],
+      "ganho": 0.8
+    },
+    "flash": {
+      "sons": [
+        "obturador"
+      ],
+      "ganho": 0.9
+    }
+  }
 }

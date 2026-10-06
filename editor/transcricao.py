@@ -88,9 +88,12 @@ def _falso(duracao: float) -> list[Palavra]:
 
 
 def transcrever(caminho: Path, *, idioma: str = IDIOMA_PADRAO, modelo: str = MODELO_PADRAO,
-                duracao: float | None = None, progresso: Progresso | None = None
-                ) -> list[Palavra]:
-    """As palavras do áudio de ``caminho`` (vídeo ou áudio), em ordem."""
+                duracao: float | None = None, progresso: Progresso | None = None,
+                dica: str = "") -> list[Palavra]:
+    """As palavras do áudio de ``caminho`` (vídeo ou áudio), em ordem.
+
+    ``dica`` são palavras que o Whisper deve esperar ouvir (as do bipe, por exemplo).
+    """
     if os.environ.get(VARIAVEL_FALSA, "").strip().lower() == "falso":
         if progresso:
             progresso(1.0)
@@ -115,8 +118,15 @@ def transcrever(caminho: Path, *, idioma: str = IDIOMA_PADRAO, modelo: str = MOD
                            local_files_only=modelo_baixado(modelo))
     # O VAD descarta trechos sem fala antes de transcrever: sem ele, música e
     # silêncio viram frases inventadas ("Obrigado por assistir!").
+    # A dica vai para o começo de cada janela de 30 s ("hotwords"), e não só da
+    # primeira ("initial_prompt"): num vídeo longo, ela valeria só para os primeiros
+    # minutos. Medido em 05/10 com 5 áudios de notícia: sem a dica, o modelo small
+    # ouvia "coca ainda" e "de captação entre membramentos"; com ela, "cocaína" e
+    # "decapitação e desmembramento", e o resto do texto não mudou. O ponto no fim
+    # conta: sem ele, a fala vira continuação da lista e perde os pontos finais.
     segmentos, _info = whisper.transcribe(audio, language=idioma or None,
-                                          word_timestamps=True, vad_filter=True)
+                                          word_timestamps=True, vad_filter=True,
+                                          hotwords=dica or None)
     total = audio.size / 16_000
     palavras: list[Palavra] = []
     for seg in segmentos:
@@ -150,12 +160,22 @@ def carregar(caminho: Path, *, origem: dict) -> list[Palavra] | None:
     return [Palavra(**p) for p in dados.get("palavras", [])]
 
 
-def identidade(video: Path, *, idioma: str, modelo: str) -> dict:
+def identidade(video: Path, *, idioma: str, modelo: str, dica: str = "") -> dict:
     """O que faz duas transcrições serem a mesma: o arquivo (tamanho e data) e as escolhas."""
     st = Path(video).stat()
-    return {"arquivo": Path(video).name, "tamanho": st.st_size,
-            "modificado": int(st.st_mtime), "idioma": idioma, "modelo": modelo}
+    origem = {"arquivo": Path(video).name, "tamanho": st.st_size,
+              "modificado": int(st.st_mtime), "idioma": idioma, "modelo": modelo}
+    # só entra quando existe: as transcrições guardadas sem dica continuam valendo
+    if dica:
+        origem["dica"] = dica
+    return origem
+
+
+def dica_das_palavras(palavras: list[str]) -> str:
+    """A dica para o Whisper: a lista em uma frase, com o ponto final."""
+    return ", ".join(palavras) + "." if palavras else ""
 
 
 __all__ = ["IDIOMA_PADRAO", "MODELOS", "MODELO_PADRAO", "VARIAVEL_FALSA", "Palavra",
-           "carregar", "identidade", "modelo_baixado", "salvar", "transcrever"]
+           "carregar", "dica_das_palavras", "identidade", "modelo_baixado", "salvar",
+           "transcrever"]

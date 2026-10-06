@@ -99,6 +99,19 @@ def argumentos() -> argparse.ArgumentParser:
                    const=False, help='sem os sons por palavra ("dinheiro" chama moedas)')
     g.add_argument("--sons-por-palavra", dest="sons_por_palavra", action="store_const",
                    const=True, help=argparse.SUPPRESS)
+    g.add_argument("--animacoes", dest="animacoes", action="store_const", const=True,
+                   help="cartões animados escritos pelo Gemini (selo, lista, quadro, enquete, "
+                        "carimbo, destaque, flash)")
+    g.add_argument("--sem-animacoes", dest="animacoes", action="store_const", const=False,
+                   help=argparse.SUPPRESS)
+    g.add_argument("--bipe", metavar="PALAVRAS",
+                   help='palavras proibidas, separadas por vírgula ("cocaína, sexo"): uma '
+                        "sílaba vira bipe na voz e asteriscos na legenda")
+    g.add_argument("--voz", choices=["original", "limpa", "estudio"],
+                   help="o tratamento da voz (padrão: original)")
+    g.add_argument("--legenda", dest="estilo_da_legenda", choices=["classica", "destaques"],
+                   help="classica (uma linha, karaokê) ou destaques (páginas de até 4 "
+                        "palavras, cores e a frase de efeito numa pílula)")
     g.add_argument("--idioma", default="pt", help="idioma da fala (pt, en, es...)")
     g.add_argument("--modelo", default="small", choices=list(MODELOS),
                    help="tamanho do Whisper (padrão small)")
@@ -107,12 +120,17 @@ def argumentos() -> argparse.ArgumentParser:
     m = p.add_argument_group("montagem em camadas (um fundo e, por cima, você ou um personagem)")
     m.add_argument("--fundo", type=Path, metavar="VIDEO",
                    help="o vídeo de fundo, sem pessoa (tela gravada, jogo, slides)")
+    m.add_argument("--cenas", type=Path, metavar="PASTA",
+                   help="no lugar do fundo: a pasta da biblioteca de cenas (com --matriz)")
+    m.add_argument("--matriz", type=Path, metavar="ARQUIVO",
+                   help="o catálogo das cenas (o cenas.json): arquivo e descrição de cada uma")
     m.add_argument("--pessoa", type=Path, metavar="VIDEO",
                    help="o vídeo de você falando, que vai por cima do fundo")
     m.add_argument("--personagem", type=Path, metavar="ANIMACAO",
                    help="um GIF, PNG animado ou WebP de personagem, em loop por cima")
-    m.add_argument("--audio", type=Path, metavar="ARQUIVO",
-                   help="um áudio separado (a narração gravada à parte)")
+    m.add_argument("--audio", type=Path, nargs="+", metavar="ARQUIVO",
+                   help="o áudio separado (a narração gravada à parte); vários, um por "
+                        "parágrafo, são juntados na ordem")
     m.add_argument("--fala", choices=["fundo", "pessoa", "audio"],
                    help="de onde vem o áudio (padrão: o --audio; senão a pessoa, se tiver "
                         "som; senão o fundo)")
@@ -123,6 +141,10 @@ def argumentos() -> argparse.ArgumentParser:
                    help="o formato do vídeo final (padrão: o do fundo)")
     m.add_argument("--parada", dest="mover", action="store_const", const=False,
                    help="a pessoa ou o personagem não muda de lugar")
+    m.add_argument("--janela", dest="janela", action="store_const", const=True,
+                   help="a cena numa janela 16:9 com câmera, e o personagem na borda dela")
+    m.add_argument("--sem-janela", dest="janela", action="store_const", const=False,
+                   help=argparse.SUPPRESS)
     m.add_argument("--mover", dest="mover", action="store_const", const=True,
                    help=argparse.SUPPRESS)
     m.add_argument("--manter-fundo-do-personagem", action="store_true",
@@ -194,7 +216,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if a.video is None and a.fundo is None and not (a.pessoa or a.personagem or a.audio
-                                                    or a.fala or a.preset):
+                                                    or a.fala or a.preset or a.cenas):
         from editor.servidor import abrir
 
         return abrir(porta=a.porta, navegador=not a.sem_navegador)
@@ -204,7 +226,9 @@ def main(argv: list[str] | None = None) -> int:
     if erro:
         print(erro, file=sys.stderr)
         return 2
-    principal = montagem.fundo if montagem is not None else a.video
+    # Com a biblioteca, o vídeo sai ao lado da pasta das cenas ("cenas-editado.mp4").
+    principal = (a.video if montagem is None
+                 else Path(montagem.fundo or montagem.cenas))
     # A flag passada ganha do preset.
     edicao = preset.opcoes(**{k: getattr(a, k) for k in presets.EDICAO
                               if getattr(a, k) is not None},
@@ -246,9 +270,10 @@ def _montagem(a: argparse.Namespace):
     from editor import video as video_mod
     from editor.montagem import Montagem
 
-    if a.fundo is None:
+    if a.fundo is None and a.cenas is None:
         if a.pessoa or a.personagem or a.audio or a.fala:
-            return None, "--pessoa, --personagem, --audio e --fala vão junto com --fundo"
+            return None, ("--pessoa, --personagem, --audio e --fala vão junto com --fundo "
+                          "ou --cenas")
         if a.video is None:
             return None, ("faltou o vídeo: editar video.mp4 --preset gameplay (na página, os "
                           "presets ficam no passo 2)")
@@ -260,14 +285,18 @@ def _montagem(a: argparse.Namespace):
         if pessoa is not None or a.personagem is not None:
             return None, "na montagem, passe a pessoa só por --pessoa (ou o personagem)"
         pessoa = a.video
-    for nome, caminho in (("fundo", a.fundo), ("pessoa", pessoa),
-                          ("personagem", a.personagem), ("áudio", a.audio)):
+    audios = list(a.audio or [])
+    for nome, caminho in (("fundo", a.fundo), ("pessoa", pessoa), ("personagem", a.personagem),
+                          ("matriz", a.matriz), *(("áudio", x) for x in audios)):
         if caminho is not None and not caminho.is_file():
             return None, f"não achei o {nome}: {caminho}"
+    if a.cenas is not None and not a.cenas.is_dir():
+        return None, f"não achei a pasta das cenas: {a.cenas}"
     recorte = a.recorte
     if pessoa is not None and recorte is None:
         recorte = "transparente" if video_mod.tem_alfa(pessoa) else "modnet"
-    return Montagem(a.fundo, pessoa=pessoa, personagem=a.personagem, audio=a.audio,
+    return Montagem(a.fundo, pessoa=pessoa, personagem=a.personagem, audios=tuple(audios),
+                    cenas=a.cenas, matriz=a.matriz,
                     recorte=recorte or "modnet", formato=a.quadro,
                     tirar_fundo_do_personagem=not a.manter_fundo_do_personagem,
                     fala=a.fala), ""
