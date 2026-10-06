@@ -645,6 +645,8 @@ def montar_sons(adesivos: Sequence[Adesivo], icones: Sequence[Icone],
                 continue
             candidatos.append((4, c, "tema", "corte"))
             ultimo = c
+    # Um evento sem som no tema (a transição, no de notícia) não ocupa lugar de ninguém.
+    candidatos = [c for c in candidatos if c[2] != "tema" or sons_mod.do_tema(tema, c[3])]
     ficam: list[tuple[int, float, str, str]] = []
     for c in sorted(candidatos, key=lambda c: (c[0], c[1])):
         if all(abs(c[1] - f[1]) >= SOM_ESPACO_S for f in ficam):
@@ -664,10 +666,17 @@ def montar_sons(adesivos: Sequence[Adesivo], icones: Sequence[Icone],
     return saida
 
 
+#: O bipe cai no meio da palavra: até tanto depois de o item entrar, ele é da palavra do
+#: item.
+BIPE_NA_PALAVRA_S = 0.8
+
+
 def com_sons_dos_cartoes(sons_: Sequence[Som], cartoes: Sequence,
-                         silencios: Sequence[tuple[float, float]] = ()) -> list[Som]:
-    """Os sons do plano com os dos cartões animados, que ganham dos outros quando caem
-    juntos; e nenhum som dentro de um bipe (os dois embolavam, no chat)."""
+                         silencios: Sequence[tuple[float, float]] = (),
+                         tema: str = "padrao") -> list[Som]:
+    """Os sons do plano com os dos cartões animados (os do ``tema``, se ele tem os seus),
+    que ganham dos outros quando caem juntos; e nenhum som dentro de um bipe (os dois
+    embolavam, no vídeo de referência)."""
     from editor import cartoes as cartoes_mod
     from editor import sons as sons_mod
 
@@ -675,10 +684,16 @@ def com_sons_dos_cartoes(sons_: Sequence[Som], cartoes: Sequence,
     vez: dict[str, int] = {}
     for c in cartoes:
         for evento, t in cartoes_mod.eventos_de_som(c):
-            nomes, ganho = sons_mod.do_cartao(evento)
+            nomes, ganhos = sons_mod.do_cartao(evento, tema)
+            if not nomes:
+                continue                     # calado de propósito no tema
+            # O item entra na palavra dele: se ela leva bipe, o clique cairia em cima
+            # ("no clicks on cocaína: the narration beeps them", no vídeo de referência).
+            if evento == "item" and any(0 <= a - t <= BIPE_NA_PALAVRA_S for a, _ in silencios):
+                continue
             k = vez.get(evento, 0)
             vez[evento] = k + 1
-            novos.append(Som(nomes[k % len(nomes)], round(t, 3), ganho))
+            novos.append(Som(nomes[k % len(nomes)], round(t, 3), ganhos[k % len(ganhos)]))
     ficam = [s for s in sons_ if all(abs(s.t - n.t) >= SOM_ESPACO_S for n in novos)]
     todos = sorted([*ficam, *novos], key=lambda s: s.t)
     return [s for s in todos

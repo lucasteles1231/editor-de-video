@@ -2,7 +2,9 @@
 O que os testes compartilham.
 
 - **Nenhum teste roda modelo de verdade nem chama a internet:** o transcritor falso, o
-  recorte falso, a IA falsa e o Pexels falso ficam ligados para todos. Esquecer isso num teste da
+  recorte falso, a IA falsa e o Pexels falso ficam ligados para todos, e os sons que o
+  editor baixaria (os do Remotion sem licença livre) não vêm: toca a reserva deles.
+  Esquecer isso num teste da
   interface rodaria o Whisper (ou gastaria a chave do Gemini) sem ninguém perceber. Os
   testes do recorte e da IA desligam o falso de propósito, com o modelo e a rede
   trocados por imitações.
@@ -19,10 +21,11 @@ from fractions import Fraction
 from pathlib import Path
 
 import av
+import httpx
 import numpy as np
 import pytest
 
-from editor import chaves, ia, imagens, pexels, recorte, render, servidor, transcricao
+from editor import chaves, ia, imagens, pexels, recorte, render, servidor, sons, transcricao
 
 
 @pytest.fixture(autouse=True)
@@ -35,6 +38,8 @@ def _isolado(tmp_path, monkeypatch):
     monkeypatch.delenv(pexels.VARIAVEL_DA_CHAVE, raising=False)
     monkeypatch.setattr(ia, "_geradas", 0)
     monkeypatch.setattr(ia, "_PENSA_SEMPRE", set())
+    monkeypatch.setattr(sons, "_transporte",
+                        httpx.MockTransport(lambda pedido: httpx.Response(503)))
     cache = tmp_path / "_cache"
     envios = tmp_path / "_envios"
     config = tmp_path / "_config"
@@ -45,7 +50,8 @@ def _isolado(tmp_path, monkeypatch):
     monkeypatch.setattr(chaves, "pasta_de_config", lambda: config)
     for nome, modulo, funcao in (("_imagens", imagens, "pasta"),
                                  ("_pexels", pexels, "_pasta_do_cache"),
-                                 ("_dados", ia, "pasta_de_dados")):
+                                 ("_dados", ia, "pasta_de_dados"),
+                                 ("_sons", sons, "pasta_dos_baixados")):
         pasta = tmp_path / nome
         pasta.mkdir()
         monkeypatch.setattr(modulo, funcao, lambda pasta=pasta: pasta)

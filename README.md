@@ -458,6 +458,11 @@ mesmas curvas e medidas:
   quadro, longe da legenda.
 - **Sem emoji colorido,** que o Pillow não desenha: no lugar dele vai um dos 122 ícones do
   editor, no traço de caneta.
+- **No tema de sons Notícia** (o do preset), os sons são os do vídeo de referência: um
+  whoosh na entrada, um clique em cada item depois do primeiro, o erro do Windows XP e o
+  disco arranhado nos carimbos, um "vine boom" no número, um ding na data e o obturador no
+  flash. O selo do gancho e o que explica um termo entram calados, e o que chama a
+  audiência ("SEGUE PRA MAIS") leva um whoosh. Nenhum clique cai numa palavra com bipe.
 
 ## A legenda em destaques
 
@@ -523,6 +528,7 @@ adesivo, depois o do ícone, o da palavra, o da transição e, por último, o do
 | **Técnico** | tiques, vidro e cliques, bem discretos |
 | **Humor** | bong, pulos e disco arranhado |
 | **Épico** | socos e impactos de metal |
+| **Notícia** | os sons do vídeo de referência, do Remotion: whoosh, clique, obturador, erro do Windows XP, "vine boom", disco arranhado e ding, só nos cartões |
 
 | A palavra | Toca |
 |---|---|
@@ -540,7 +546,17 @@ adesivo, depois o do ícone, o da palavra, o da transição e, por último, o do
 - **Ícone com som:** quando a palavra também chama um ícone (o "dinheiro" chama a
   moeda), o ícone aparece com o som da palavra.
 - **De onde vêm:** os sons de arquivo são da [Kenney](https://kenney.nl), em domínio
-  público (CC0), e vão junto no editor: 61 arquivos, uns 520 KB.
+  público (CC0), e vão junto no editor: 61 arquivos, uns 520 KB. O tema Notícia é a
+  exceção, logo abaixo.
+- **O tema Notícia** é o do preset de mesmo nome: os sete sons da [biblioteca do
+  Remotion](https://www.remotion.dev/docs/sfx), nos volumes do vídeo de referência (de
+  0,22 a 0,55). Eles tocam só nos cartões, e nada na troca de câmera ou por palavra. Como
+  o Remotion já os nivela, entram como vêm, inteiros (o ding dura 1,4 s). Três são CC0 e
+  vão junto. Os outros quatro (o "vine boom", o erro do Windows XP, o disco arranhado e o
+  ding) não têm licença livre: o editor baixa do endereço do Remotion na primeira vez que
+  um vídeo precisa deles e guarda na pasta de dados. Sem internet, toca um parecido da
+  Kenney. O Remotion diz que esses quatro "provavelmente" podem ser usados e que não se
+  responsabiliza; veja [TERCEIROS.md](TERCEIROS.md).
 - **O volume:** todos saem nivelados pelo volume que o ouvido sente, para nenhum tema
   soar mais alto que outro, e ficam sempre por baixo da sua voz. O volume dos sons, no
   passo 2, sobe ou desce todos juntos.

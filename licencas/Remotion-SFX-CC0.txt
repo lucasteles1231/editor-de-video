@@ -1,0 +1,19 @@
+Efeitos sonoros — os três em domínio público da biblioteca de sons do Remotion
+
+Os arquivos editor/recursos/sons/remotion-*.wav foram baixados de https://remotion.media
+em 05/10/2026, sem alteração. A página de cada som (https://www.remotion.dev/docs/sfx)
+informa a origem e a licença:
+
+- remotion-whoosh.wav (whoosh.wav):
+  "Woosh by 1bob - freesound.org/s/831936/ - License: Creative Commons 0"
+- remotion-clique.wav (mouse-click.wav):
+  "Mouse Click Sound.mp3 by Pixeliota - freesound.org/s/678248/ - License: Creative Commons 0"
+- remotion-obturador.wav (shutter-modern.wav):
+  "DSLR Shutter fast 006.wav by ristooooo1 - freesound.org/s/539136/ - License: Creative Commons 0"
+
+Creative Commons Zero (CC0 1.0): https://creativecommons.org/publicdomain/zero/1.0/
+
+Os outros quatro sons da mesma biblioteca usados pelo tema "Notícia" (vine-boom,
+windows-xp-error, record-scratch e ding) não têm licença livre e não vão neste
+repositório: o editor baixa de remotion.media na primeira vez que um vídeo precisa deles.
+Veja TERCEIROS.md.

@@ -8,20 +8,33 @@ O catálogo, ``recursos/sons.json``, diz:
   transição (zoom e pessoa andando) e o corte. Cada evento tem algumas variações, que se
   revezam pela ordem: o mesmo vídeo soa sempre igual;
 - **as famílias por palavra:** "dinheiro" chama moedas, "errado" uma buzina;
-- **as sequências:** sons montados de outros (as teclas, o tique-taque).
+- **as sequências:** sons montados de outros (as teclas, o tique-taque);
+- **os cartões animados:** o som de cada momento deles. Um tema pode ter os seus: o de
+  notícia usa os sons do vídeo de referência (os do Remotion), nos volumes dele.
 
 Todo som sai nivelado (os de arquivo são lidos uma vez só): os da Kenney vêm de pacotes
 diferentes, com volumes que iam de um clique quase mudo a um impacto estourando, e o pop
-sintetizado soava de 4 a 6 dB acima dos tons deles.
+sintetizado soava de 4 a 6 dB acima dos tons deles. Os do Remotion não: ele já os nivela
+(o pico em −3 dBFS), e eles tocam como vêm, inteiros, no volume que o vídeo de referência
+usou.
+
+Dos sete do Remotion, três são CC0 e vão junto. Os outros quatro (o "vine boom", o erro
+do Windows XP, o disco arranhado e o ding) não têm licença livre: o editor baixa do
+endereço do Remotion na primeira vez que o tema toca, guarda na pasta de dados e, sem
+internet, toca um parecido da Kenney.
 """
 from __future__ import annotations
 
 import functools
 import json
+import logging
 from collections.abc import Sequence
 from importlib.resources import files
+from pathlib import Path
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 #: A voz manda: os efeitos, já nivelados, entram neste volume por baixo dela. Com ele, o
 #: pop sai no mesmo volume de antes do nivelamento (35% do pico), e o resto, junto dele.
@@ -48,6 +61,12 @@ REFORCO_MAXIMO = 2.0
 OLHAR_S = 0.002
 #: A borda que some no fim de um som cortado pelo teto.
 SOME_S = 0.03
+#: Os sons crus (os do Remotion) tocam inteiros: o ding dura 1,4 s.
+TETO_CRU_S = 2.0
+#: Quanto esperar por um som baixado antes de tocar a reserva dele.
+ESPERA_DO_DOWNLOAD_S = 10.0
+#: O transporte do httpx para baixar (os testes trocam por um falso, sem rede).
+_transporte = None
 
 
 def _envelope(n: int, ataque: float, queda: float) -> np.ndarray:
@@ -111,21 +130,89 @@ def ganho_do_evento(evento: str) -> float:
     return float(catalogo()["ganhos"].get(evento, 1.0))
 
 
-def do_cartao(evento: str) -> tuple[list[str], float]:
-    """Os sons de um evento dos cartões animados ("item", "erro", "boom"…) e o ganho
-    deles: os do vídeo do chat (whoosh, erro, boom, clique, obturador e ding)."""
-    cartoes = catalogo()["cartoes"]
-    c = cartoes.get(evento) or cartoes["selo"]
-    return list(c["sons"]), float(c.get("ganho", 1.0))
+def do_cartao(evento: str, tema: str = "padrao") -> tuple[list[str], list[float]]:
+    """Os sons de um evento dos cartões animados ("item", "erro", "boom"…) e o ganho de
+    cada um. O tema que tem os seus (o de notícia) manda; um evento vazio nele é silêncio
+    de propósito (o selo do gancho, no vídeo de referência, entra calado)."""
+    padrao = catalogo()["cartoes"]
+    proprios = (catalogo()["temas"].get(tema) or {}).get("cartoes") or {}
+    c = proprios[evento] if evento in proprios else (padrao.get(evento) or padrao["selo"])
+    nomes = list(c.get("sons", []))
+    ganhos = c.get("ganhos") or [c.get("ganho", 1.0)] * len(nomes)
+    return nomes, [float(g) for g in ganhos]
 
 
 def _arquivo(nome: str):
-    return files("editor") / "recursos" / "sons" / f"{nome}.ogg"
+    pasta = files("editor") / "recursos" / "sons"
+    for extensao in (".ogg", ".wav"):
+        caminho = pasta / f"{nome}{extensao}"
+        if caminho.is_file():
+            return caminho
+    return pasta / f"{nome}.ogg"
+
+
+def cru(nome: str) -> bool:
+    """Se o som toca como vem (os do Remotion), sem o nivelamento daqui."""
+    return nome in catalogo().get("brutos", ())
+
+
+def pasta_dos_baixados() -> Path:
+    """Onde ficam os sons baixados (os sem licença livre, que não vão junto)."""
+    from platformdirs import user_data_dir
+
+    return Path(user_data_dir("editor-de-video", appauthor=False)) / "sons"
+
+
+def _baixado(nome: str) -> Path | None:
+    """O arquivo de um som que não vai junto: baixado do endereço do catálogo na primeira
+    vez e guardado. Sem internet (ou com o endereço fora do ar), ``None``."""
+    destino = pasta_dos_baixados() / f"{nome}.wav"
+    if destino.is_file() and destino.stat().st_size > 0:
+        return destino
+    url = catalogo()["baixados"][nome]["url"]
+    try:
+        import httpx
+
+        with httpx.Client(timeout=ESPERA_DO_DOWNLOAD_S, transport=_transporte,
+                          follow_redirects=True) as cliente:
+            r = cliente.get(url)
+            r.raise_for_status()
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        parcial = destino.with_suffix(".parcial")
+        parcial.write_bytes(r.content)
+        parcial.replace(destino)
+        logger.info("som baixado: %s (%d bytes)", url, len(r.content))
+        return destino
+    except Exception as erro:          # sem rede, fora do ar, disco cheio: a reserva toca
+        logger.info("o som %s não veio (%s); toca a reserva", nome, erro)
+        return None
+
+
+def _ler_cru(caminho, taxa: int) -> np.ndarray:
+    """O som como está no arquivo: em mono (a média dos canais) e na taxa pedida. Sem o
+    ``ler_audio`` do vídeo, que passa tudo para estéreo, e o mono sai 3 dB abaixo
+    (medido em 05/10): o som cru tem que tocar no volume do vídeo de referência."""
+    import av
+
+    partes: list[np.ndarray] = []
+    with av.open(str(caminho)) as c:
+        fluxo = c.streams.audio[0]
+        # A taxa muda pelo swresample (a interpolação linear achatava 1,3 dB do pico do
+        # clique), e os canais ficam como estão.
+        troca = av.AudioResampler(format="fltp", layout=fluxo.layout.name, rate=taxa)
+        for quadro in c.decode(fluxo):
+            for pronto in troca.resample(quadro):
+                partes.append(pronto.to_ndarray().mean(axis=0))
+        for pronto in troca.resample(None):
+            partes.append(pronto.to_ndarray().mean(axis=0))
+    som = np.concatenate(partes) if partes else np.zeros(1, np.float32)
+    return som.astype(np.float32)
 
 
 def existe(nome: str) -> bool:
     c = catalogo()
-    return nome in VOZES or nome in c["sequencias"] or _arquivo(nome).is_file()
+    return (nome in VOZES or nome in c["sequencias"] or nome in c.get("baixados", {})
+            or _arquivo(nome).is_file())
 
 
 @functools.lru_cache(maxsize=256)
@@ -134,6 +221,11 @@ def _amostras(nome: str, taxa: int) -> np.ndarray:
     sequência é montada das partes, que já vêm niveladas."""
     c = catalogo()
     longo = nome in c["longos"]
+    caminho = None
+    if nome in c.get("baixados", {}):
+        caminho = _baixado(nome)
+        if caminho is None:
+            return _amostras(c["baixados"][nome]["reserva"], taxa)
     if nome in c["sequencias"]:
         seq = c["sequencias"][nome]
         partes = [amostras(n, taxa) for n in seq["sons"]]
@@ -142,16 +234,18 @@ def _amostras(nome: str, taxa: int) -> np.ndarray:
         for k, p in enumerate(partes):
             saida[k * passo:k * passo + len(p)] += p
         som = saida
+    elif cru(nome):
+        som = _ler_cru(caminho or _arquivo(nome), taxa)
     else:
         from editor import video as video_mod
 
-        estereo = video_mod.ler_audio(_arquivo(nome))
+        estereo = video_mod.ler_audio(caminho or _arquivo(nome))
         som = estereo.mean(axis=1).astype(np.float32) if len(estereo) else np.zeros(1, np.float32)
         if taxa != video_mod.TAXA:
             pontos = np.linspace(0, len(som) - 1, round(len(som) * taxa / video_mod.TAXA))
             som = np.interp(pontos, np.arange(len(som)), som).astype(np.float32)
         som = _nivelar(som, taxa, RMS_ALVO * (ALVO_DO_LONGO if longo else 1.0))
-    n = int((TETO_LONGO_S if longo else TETO_S) * taxa)
+    n = int((TETO_CRU_S if cru(nome) else TETO_LONGO_S if longo else TETO_S) * taxa)
     if len(som) > n:
         som = som[:n].copy()
         borda = max(1, int(SOME_S * taxa))
@@ -236,13 +330,17 @@ def trilha(sons: Sequence, duracao: float, taxa: int, volume: float = 1.0) -> np
     for k, som in enumerate(sons):
         if not existe(som.nome):
             continue
-        dados = amostras(som.nome, taxa, semente=k + 1) * float(getattr(som, "ganho", 1.0))
+        # O som cru entra no volume pedido, como no vídeo de referência; o nivelado,
+        # abaixo da voz pelo GANHO.
+        fator = 1.0 if cru(som.nome) else GANHO
+        dados = (amostras(som.nome, taxa, semente=k + 1) * float(getattr(som, "ganho", 1.0))
+                 * fator)
         i0 = round(som.t * taxa)
         if i0 >= n:
             continue
         pedaco = dados[: n - i0]
         saida[i0:i0 + len(pedaco)] += pedaco
-    return saida * GANHO * volume
+    return saida * volume
 
 
 def misturar(voz: np.ndarray, efeitos: np.ndarray) -> np.ndarray:
@@ -257,20 +355,45 @@ def misturar(voz: np.ndarray, efeitos: np.ndarray) -> np.ndarray:
 
 def demonstracao(tema: str, taxa: int, volume: float = 1.0) -> np.ndarray:
     """Os sons de um tema em fila, para ouvir na página: duas aparições, uma transição e
-    dois cortes, com um respiro entre eles."""
+    dois cortes, com um respiro entre eles. O tema com sons de cartão próprios (o de
+    notícia) toca os dele: a entrada, um item, o erro, o boom, o obturador e o ding."""
     from types import SimpleNamespace
 
-    fila = [("aparicao", 0), ("aparicao", 1), ("transicao", 0), ("corte", 0), ("corte", 1)]
     sons, t = [], 0.1
+    if (catalogo()["temas"].get(tema) or {}).get("cartoes"):
+        for evento in ("entrada", "item", "erro", "boom", "flash", "ding"):
+            nomes, ganhos = do_cartao(evento, tema)
+            if nomes:
+                sons.append(SimpleNamespace(nome=nomes[0], t=t, ganho=ganhos[0]))
+                t += 0.9
+        return trilha(sons, t + 1.0, taxa, volume)
+    fila = [("aparicao", 0), ("aparicao", 1), ("transicao", 0), ("corte", 0), ("corte", 1)]
     for evento, k in fila:
         variacoes = do_tema(tema, evento)
+        if not variacoes:
+            continue
         sons.append(SimpleNamespace(nome=variacoes[k % len(variacoes)], t=t,
                                     ganho=ganho_do_evento(evento)))
         t += 0.6
     return trilha(sons, t + 0.4, taxa, volume)
 
 
-__all__ = ["GANHO", "VOZES", "amostras", "catalogo", "demonstracao", "do_cartao", "do_tema",
-           "existe",
-           "ganho_do_evento", "misturar", "pop", "temas", "trilha", "volume_percebido",
-           "whoosh"]
+__all__ = [
+    "GANHO",
+    "VOZES",
+    "amostras",
+    "catalogo",
+    "cru",
+    "demonstracao",
+    "do_cartao",
+    "do_tema",
+    "existe",
+    "ganho_do_evento",
+    "misturar",
+    "pasta_dos_baixados",
+    "pop",
+    "temas",
+    "trilha",
+    "volume_percebido",
+    "whoosh",
+]

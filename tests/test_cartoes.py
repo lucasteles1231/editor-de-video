@@ -96,11 +96,13 @@ class TestODesenho:
 class TestOsSons:
     def test_os_eventos_de_cada_modelo(self):
         sons = {f"{c.modelo}-{c.texto[:4]}": c_mod.eventos_de_som(c) for c in _cartoes()}
-        assert sons["selo-SEM "] == [("boom", 0.0)]                 # o gancho cai com boom
-        assert sons["selo-SEGU"] == [("selo", 1.0)]
-        assert sons["lista-REVE"] == [("entrada", 1.0), ("item", 1.0), ("item", 2.0),
-                                      ("item", 3.0)]
-        assert sons["enquete-PASS"] == [("item", 1.5), ("item", 2.5), ("selo", 3.5)]
+        assert sons["selo-SEM "] == [("gancho", 0.0)]               # o gancho é outro evento
+        assert sons["selo-SEGU"] == [("chamada", 1.0)]          # chama a audiência
+        # os três itens têm palavra censurada (a voz leva o bipe ali): só a entrada toca
+        assert sons["lista-REVE"] == [("entrada", 1.0)]
+        # a primeira linha entra junto com o quadro e fica com o som da entrada
+        assert sons["quadro-CLAS"] == [("entrada", 1.0), ("item", 2.0), ("item", 3.0)]
+        assert sons["enquete-PASS"] == [("item", 1.5), ("item", 2.5), ("comenta", 3.5)]
         assert sons["carimbo-APAG"] == [("entrada", 1.0), ("erro", 1.6)]
         assert sons["destaque-19 D"] == [("ding", 1.2)]             # uma data: ding
         assert sons["flash-OS F"] == [("flash", 1.2)]

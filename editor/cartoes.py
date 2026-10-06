@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import functools
 import io
+import re
 from dataclasses import dataclass, field
 from importlib.resources import files
 
@@ -532,19 +533,33 @@ def _flash(tela, c: Cartao, t, k, saida) -> None:
               escala=a.pop(t, depois), giro=4, opacidade=a.aparece(t, depois, 2) * saida)
 
 
+#: Um item que entra até este tanto depois do cartão fica com o som da entrada dele.
+JUNTO_DA_ENTRADA_S = 0.15
+#: O selo que chama a audiência ("SEGUE PRA MAIS", "COMENTA AÍ") é outro momento de som:
+#: no vídeo de referência, só ele tinha whoosh; a etiqueta que explica entrava calada.
+CHAMADA = re.compile(r"SEGU|SIGA|INSCREV|COMENT|CURT|COMPARTILH|SININHO|ATIV|LINK|SALV")
+
+
 def eventos_de_som(c: Cartao) -> list[tuple[str, float]]:
-    """Os sons de um cartão e quando tocam (``recursos/sons.json``, seção "cartoes"): o
-    selo com pop (o do gancho, com boom), a entrada da lista e do quadro com whoosh, cada
-    item com um clique, o carimbo com o som de erro, o número com boom e a data com ding,
-    o flash com o obturador."""
+    """Os momentos de som de um cartão e quando tocam (``recursos/sons.json``: a seção
+    "cartoes", ou a do tema): o selo (o do gancho é outro evento), a entrada da lista e do
+    quadro, cada item depois do primeiro, o erro do carimbo, o número (boom) ou a data
+    (ding), o flash e o "comenta" da enquete.
+
+    Como no vídeo de referência, um item com palavra censurada não leva clique: a voz já
+    leva o bipe ali."""
     forte = c.forte if c.forte is not None else c.inicio
     if c.modelo == "selo":
         gancho = c.forte is not None and abs(c.forte - c.inicio) < 1e-3
-        return [("boom" if gancho else "selo", c.inicio)]
+        evento = "gancho" if gancho else "chamada" if CHAMADA.search(c.texto) else "selo"
+        return [(evento, c.inicio)]
     if c.modelo in ("lista", "quadro"):
-        return [("entrada", c.inicio)] + [("item", i.em) for i in c.itens]
+        return [("entrada", c.inicio)] + [
+            ("item", i.em) for i in c.itens
+            if i.em - c.inicio > JUNTO_DA_ENTRADA_S and "*" not in i.texto]
     if c.modelo == "enquete":
-        return [("item", i.em) for i in c.itens] + ([("selo", c.forte)] if c.forte else [])
+        return ([("item", i.em) for i in c.itens if "*" not in i.texto]
+                + ([("comenta", c.forte)] if c.forte else []))
     if c.modelo == "carimbo":
         return [("entrada", c.inicio), ("erro", forte)]
     if c.modelo == "destaque":

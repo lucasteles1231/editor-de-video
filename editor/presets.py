@@ -102,7 +102,8 @@ PRESETS: dict[str, Preset] = {p.nome: p for p in (
             "Narração com muitas imagens: cenas pela fala, janela com câmera, cartões, bipe e "
             "voz de estúdio.",
             pausa_maxima=0.35, nivel_zoom=1.12, ritmo=1.2, empurrao=0.06, adesivos=False,
-            icones=False, tema_dos_sons="gameplay", volume_dos_sons=1.0, caracteres_por_linha=16,
+            icones=False, tema_dos_sons="noticia", sons_por_palavra=False,
+            volume_dos_sons=1.0, caracteres_por_linha=16,
             janela=True, animacoes=True, voz="estudio", bipe=BIPE_DA_NOTICIA,
             estilo_da_legenda="destaques", thumb=("alerta", "rosa")),
     _preset("aula", "Aula ou tutorial longo",

@@ -355,8 +355,8 @@ def _mixar(f: _Fala, edicao: OpcoesDeEdicao) -> None:
     cima de um bipe."""
     p = f.plano
     if p.sons or p.cartoes:
-        p.sons = (plano.com_sons_dos_cartoes(p.sons, p.cartoes, p.bipes) if edicao.sons
-                  else [])
+        p.sons = (plano.com_sons_dos_cartoes(p.sons, p.cartoes, p.bipes, edicao.tema_dos_sons)
+                  if edicao.sons else [])
     if f.audio is not None:
         f.som = montar_audio(f.audio, f.linha, p, edicao.volume_dos_sons)
 

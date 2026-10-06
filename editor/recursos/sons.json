@@ -125,6 +125,71 @@
       "corte": [
         "impactMetal_medium_004"
       ]
+    },
+    "noticia": {
+      "titulo": "Notícia (os sons do Remotion)",
+      "aparicao": [],
+      "transicao": [],
+      "corte": [
+        "remotion-clique"
+      ],
+      "cartoes": {
+        "gancho": {
+          "sons": []
+        },
+        "selo": {
+          "sons": []
+        },
+        "chamada": {
+          "sons": [
+            "remotion-whoosh"
+          ],
+          "ganho": 0.3
+        },
+        "entrada": {
+          "sons": [
+            "remotion-whoosh"
+          ],
+          "ganho": 0.28
+        },
+        "item": {
+          "sons": [
+            "remotion-clique"
+          ],
+          "ganho": 0.42
+        },
+        "erro": {
+          "sons": [
+            "remotion-erro-xp",
+            "remotion-disco"
+          ],
+          "ganhos": [
+            0.3,
+            0.22
+          ]
+        },
+        "boom": {
+          "sons": [
+            "remotion-boom"
+          ],
+          "ganho": 0.35
+        },
+        "ding": {
+          "sons": [
+            "remotion-ding"
+          ],
+          "ganho": 0.35
+        },
+        "flash": {
+          "sons": [
+            "remotion-obturador"
+          ],
+          "ganho": 0.55
+        },
+        "comenta": {
+          "sons": []
+        }
+      }
     }
   },
   "familias": {
@@ -410,6 +475,56 @@
         "obturador"
       ],
       "ganho": 0.9
+    },
+    "gancho": {
+      "sons": [
+        "impactPunch_heavy_000"
+      ],
+      "ganho": 0.9
+    },
+    "comenta": {
+      "sons": [
+        "pop"
+      ],
+      "ganho": 1.0
+    },
+    "chamada": {
+      "sons": [
+        "pop"
+      ],
+      "ganho": 1.0
     }
+  },
+  "brutos": [
+    "remotion-whoosh",
+    "remotion-clique",
+    "remotion-obturador",
+    "remotion-boom",
+    "remotion-erro-xp",
+    "remotion-disco",
+    "remotion-ding"
+  ],
+  "baixados": {
+    "remotion-boom": {
+      "url": "https://remotion.media/vine-boom.wav",
+      "reserva": "impactPunch_heavy_000"
+    },
+    "remotion-erro-xp": {
+      "url": "https://remotion.media/windows-xp-error.wav",
+      "reserva": "error_004"
+    },
+    "remotion-disco": {
+      "url": "https://remotion.media/record-scratch.wav",
+      "reserva": "scratch_005"
+    },
+    "remotion-ding": {
+      "url": "https://remotion.media/ding.wav",
+      "reserva": "confirmation_004"
+    }
+  },
+  "creditos": {
+    "remotion-whoosh": "Woosh, de 1bob — freesound.org/s/831936 — CC0 (via remotion.media)",
+    "remotion-clique": "Mouse Click Sound, de Pixeliota — freesound.org/s/678248 — CC0 (via remotion.media)",
+    "remotion-obturador": "DSLR Shutter fast 006, de ristooooo1 — freesound.org/s/539136 — CC0 (via remotion.media)"
   }
 }

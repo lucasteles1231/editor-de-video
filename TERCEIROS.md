@@ -17,6 +17,7 @@ na instalação. A lista completa está aqui, com a licença de cada um.
 | **roughjs** 4.6, a seta e o círculo de caneta da thumbnail | dentro da página montada | MIT: [`licencas/roughjs-MIT.txt`](licencas/roughjs-MIT.txt) |
 | **Remotion** 4 e `@remotion/player`, a prévia da thumbnail | dentro da página montada | Remotion License: [`licencas/Remotion-License.md`](licencas/Remotion-License.md) |
 | 61 efeitos sonoros da **Kenney** (*Interface Sounds*, *Impact Sounds*, *UI Audio*, *Digital Audio*, *RPG Audio* e *Music Jingles*) | `editor/recursos/sons/` | Domínio público, CC0: [`licencas/Kenney-CC0.txt`](licencas/Kenney-CC0.txt) |
+| 3 efeitos sonoros da biblioteca do **Remotion** (`remotion.media`): *Woosh*, de 1bob; *Mouse Click Sound*, de Pixeliota; e *DSLR Shutter fast 006*, de ristooooo1, todos do freesound.org | `editor/recursos/sons/remotion-*.wav` | Domínio público, CC0: [`licencas/Remotion-SFX-CC0.txt`](licencas/Remotion-SFX-CC0.txt) |
 | A mão apontando do **Fluent UI Emoji**, da Microsoft (*backhand index pointing right*, em 3D e em vetor, nos seis tons) | `editor/recursos/maos/` | MIT: [`licencas/FluentUI-Emoji-MIT.txt`](licencas/FluentUI-Emoji-MIT.txt) |
 
 ### Sobre a licença do Remotion
@@ -35,6 +36,20 @@ empresa desse tamanho.
 O editor usa só o Player do Remotion, que mostra a prévia ao vivo da thumbnail. O PNG
 é desenhado pelo próprio editor, no navegador, sem os servidores de render do
 Remotion, e a página não faz nenhuma chamada para fora do seu computador.
+
+## Baixado no primeiro uso do tema de sons "Notícia" (não vem neste repositório)
+
+Quatro sons da biblioteca do Remotion não têm licença livre. O editor baixa de
+`remotion.media` na primeira vez que um vídeo do tema "Notícia" precisa de um deles e
+guarda na pasta de dados do seu usuário. Sem internet, toca um parecido da Kenney. Para
+não usá-los, escolha outro tema de sons.
+
+| Som | Endereço | Origem e licença |
+|---|---|---|
+| *vine boom* | `https://remotion.media/vine-boom.wav` | myinstants.com. Sem licença livre: o Remotion diz que, de tão usado, "provavelmente" pode ser usado, e que não se responsabiliza pelo uso |
+| *erro do Windows XP* | `https://remotion.media/windows-xp-error.wav` | o mesmo |
+| *disco arranhado* | `https://remotion.media/record-scratch.wav` | o mesmo |
+| *ding* | `https://remotion.media/ding.wav` | o mesmo |
 
 ## Baixado na instalação (não vem neste repositório)
 
