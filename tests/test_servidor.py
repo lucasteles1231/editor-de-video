@@ -553,12 +553,14 @@ class TestABiblioteca:
                              headers=CABECA)
         assert quadro.status_code == 200
 
+    # Os nomes curtos importam: o pytest põe o nome do teste numa variável de ambiente, e
+    # no Windows ela não passa de 32.767 letras (os 3 MB do último quebravam o CI).
     @pytest.mark.parametrize(("conteudo", "status", "trecho"), [
         (b"{quebrado", 422, "JSON"),
         (b'[{"arquivo": "nenhum.mp4", "descricao": "x"}]', 422, "nenhuma cena"),
         (b"\xff\xfe\x00", 422, "UTF-8"),
         (b"[" + b" " * (3 * 1024 * 1024) + b"]", 400, "2 MB"),
-    ])
+    ], ids=["json-quebrado", "nenhuma-cena", "nao-e-utf8", "grande-demais"])
     def test_matriz_ruim(self, cliente, tmp_path, conteudo, status, trecho):
         bid = self._abrir(cliente, tmp_path)
         r = cliente.post(f"/api/bibliotecas/{bid}/matriz", headers=CABECA,

@@ -347,6 +347,13 @@ def _gerar(cliente, modelo: str, chave_: str, corpo: dict) -> str:
     return texto
 
 
+#: Os modelos que só respondem com o raciocínio ligado: o 3.x recusa o ``thinkingBudget``
+#: 0 com um 400 genérico. Depois da primeira recusa, os pedidos seguintes da mesma sessão
+#: (o conserto do roteiro, as ideias da thumbnail) já vão pensando, sem gastar uma
+#: tentativa recusada a cada vez.
+_PENSA_SEMPRE: set[str] = set()
+
+
 def _perguntar(chave_: str, sistema: str, pedido: str, imagens: Sequence[bytes],
                esquema: dict, *, temperatura: float, transporte=None,
                gasto: list[str] | None = None) -> tuple[dict, str]:
@@ -360,7 +367,7 @@ def _perguntar(chave_: str, sistema: str, pedido: str, imagens: Sequence[bytes],
     esperas: list[float] = []
     with _cliente(transporte) as cliente:
         for modelo in MODELOS:
-            pensar, de_novo = False, False
+            pensar, de_novo, recusou_sem_pensar = modelo in _PENSA_SEMPRE, False, False
             while True:
                 if gasto is not None:
                     gasto.append(modelo)
@@ -374,7 +381,7 @@ def _perguntar(chave_: str, sistema: str, pedido: str, imagens: Sequence[bytes],
                 except _Pular as p:
                     logger.info("gemini: %s (%.1f s)", p, time.monotonic() - comeco)
                     if p.sem_pensar and not pensar:
-                        pensar = True                 # o mesmo modelo, deixando pensar
+                        pensar = recusou_sem_pensar = True   # o mesmo, deixando pensar
                         continue
                     if p.transitorio and not de_novo:
                         de_novo = True                # o mesmo modelo, uma vez mais
@@ -386,6 +393,8 @@ def _perguntar(chave_: str, sistema: str, pedido: str, imagens: Sequence[bytes],
                     if p.espera is not None:
                         esperas.append(p.espera)
                     break
+                if recusou_sem_pensar:
+                    _PENSA_SEMPRE.add(modelo)
                 try:
                     return json.loads(texto), modelo
                 except ValueError:

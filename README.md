@@ -160,8 +160,8 @@ no seu computador são o Whisper, que transcreve a fala, e o MODNet, que recorta
 para a thumbnail e para a montagem em camadas.
 O Gemini só entra se você colar uma chave: nas ideias de thumbnail e, quando ligado, no
 roteiro (as cenas da biblioteca, os cartões animados e os destaques da legenda). O
-roteiro custa um ou dois pedidos de texto da cota grátis por vídeo, e o resultado diz
-quantos foram.
+roteiro é um pedido de texto da cota grátis por vídeo, mais um quando a resposta precisa
+de conserto. O resultado diz quantos foram, contando as tentativas que o Google recusou.
 
 ## A interface
 

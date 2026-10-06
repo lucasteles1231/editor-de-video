@@ -34,6 +34,7 @@ def _isolado(tmp_path, monkeypatch):
     monkeypatch.delenv(ia.VARIAVEL_DA_CHAVE, raising=False)
     monkeypatch.delenv(pexels.VARIAVEL_DA_CHAVE, raising=False)
     monkeypatch.setattr(ia, "_geradas", 0)
+    monkeypatch.setattr(ia, "_PENSA_SEMPRE", set())
     cache = tmp_path / "_cache"
     envios = tmp_path / "_envios"
     config = tmp_path / "_config"

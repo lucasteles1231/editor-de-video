@@ -198,6 +198,24 @@ class TestOPedido:
         segundo = json.loads(gemini.pedidos[1].content)["generationConfig"]
         assert "thinkingConfig" not in segundo
 
+    def test_depois_da_recusa_o_modelo_ja_vai_pensando(self, de_verdade):
+        """O pedido seguinte da sessão (o conserto do roteiro, as ideias) não gasta de novo
+        a tentativa que o modelo sempre recusa."""
+        gemini = _Gemini(httpx.Response(400, json={"error": {"message": "invalid argument"}}),
+                         _resposta([_variante()] * 3), _resposta([_variante()] * 3))
+        assert _sugerir(gemini)["pedidos"] == 2
+        assert _sugerir(gemini)["pedidos"] == 1
+        terceiro = json.loads(gemini.pedidos[2].content)["generationConfig"]
+        assert "thinkingConfig" not in terceiro
+
+    def test_um_400_que_continua_nao_marca_o_modelo(self, de_verdade):
+        # recusado com e sem raciocínio (um esquema ruim, por exemplo): não é o raciocínio
+        ruim = httpx.Response(400, json={"error": {"message": "invalid argument"}})
+        gemini = _Gemini(*[ruim] * 2 * len(ia.MODELOS))
+        with pytest.raises(ia.ErroDaIA):
+            _sugerir(gemini)
+        assert set() == ia._PENSA_SEMPRE
+
     def test_cota_do_dia_diz_quando_volta(self, de_verdade):
         """O formato real, copiado de um 429 do gemini-3.8-flash em 03/10/2026."""
         corpo = {"error": {"code": 429, "status": "RESOURCE_EXHAUSTED", "details": [
