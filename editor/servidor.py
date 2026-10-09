@@ -39,6 +39,7 @@ from PIL import Image
 
 from editor import (
     __version__,
+    catalogo,
     cenas,
     ia,
     icones,
@@ -545,6 +546,75 @@ def criar_app(token: str, *, porta: int, pasta_saida: Path | None = None,
         capa = next((c for c in lida.cenas if c.energia == "alta"), lida.cenas[0])
         b["capa"] = _registrar_video(capa.arquivo)
         return {"id": bid, "nome": b["nome"], **lida.ficha(), "capa": b["capa"]}
+
+    # A matriz gerada pelo editor: o Gemini descreve os clipes (em segundo plano, com o
+    # andamento), e a página mostra numa tabela para revisar antes de valer.
+
+    @app.post("/api/bibliotecas/{bid}/gerar-matriz")
+    def gerar_matriz(bid: str, dados: Annotated[dict | None, Body()] = None):
+        b = _biblioteca(bid)
+        if (b.get("geracao") or {}).get("rodando"):
+            raise HTTPException(409, "A matriz já está sendo gerada.")
+        clipes = [(c, c.name) for c in cenas.clipes_da_pasta(b["pasta"])]
+        if not clipes:
+            raise HTTPException(422, "A pasta não tem clipes para descrever.")
+        assunto = re.sub(r"\s+", " ", str((dados or {}).get("assunto") or "")).strip()[:200]
+        estado = {"rodando": True, "prontas": 0, "total": len(clipes), "pedidos": 0,
+                  "por": "", "aviso": "", "erro": "", "cenas": None}
+        b["geracao"] = estado
+
+        def andou(prontas: int, total: int, pedidos: int) -> None:
+            estado.update(prontas=prontas, total=total, pedidos=pedidos)
+
+        def rodar() -> None:
+            try:
+                g = catalogo.gerar(clipes, assunto=assunto, progresso=andou)
+                estado.update(cenas=g.cenas, por=g.por, aviso=g.aviso, pedidos=g.pedidos)
+            except Exception as erro:
+                logger.exception("a matriz não saiu")
+                estado["erro"] = f"A matriz não saiu: {erro}"
+            finally:
+                estado["rodando"] = False
+
+        threading.Thread(target=rodar, daemon=True).start()
+        return {k: v for k, v in estado.items() if k != "cenas"}
+
+    @app.get("/api/bibliotecas/{bid}/gerar-matriz")
+    def andamento_da_matriz(bid: str):
+        estado = _biblioteca(bid).get("geracao")
+        if estado is None:
+            raise HTTPException(404, "Nenhuma matriz foi pedida para esta biblioteca.")
+        return dict(estado)
+
+    @app.get("/api/bibliotecas/{bid}/matriz")
+    def matriz_atual(bid: str):
+        """A matriz em uso, para a tabela de revisão."""
+        b = _biblioteca(bid)
+        if b["matriz"] is None:
+            raise HTTPException(404, "Esta biblioteca ainda não tem matriz.")
+        dados = json.loads(Path(b["matriz"]).read_text(encoding="utf-8-sig"))
+        return {"cenas": dados.get("cenas") if isinstance(dados, dict) else dados}
+
+    @app.get("/api/bibliotecas/{bid}/quadro")
+    def quadro_da_cena(bid: str, arquivo: str, segundo: float | None = None,
+                       largura: int = 240):
+        """Um quadro de uma cena da biblioteca (o do meio, se o instante não vier)."""
+        b = _biblioteca(bid)
+        caminho = b["pasta"] / Path(arquivo.replace("\\", "/")).name
+        if not caminho.is_file():
+            raise HTTPException(404, "Esta cena não está na pasta enviada.")
+        info = video_mod.sondar(caminho)
+        t = info.duracao / 2 if segundo is None else min(max(0.0, segundo), info.duracao)
+        matriz = video_mod.quadro_em(caminho, t, info.rotacao)
+        if matriz is None:
+            raise HTTPException(404, "Não deu para ler um quadro desta cena.")
+        img = Image.fromarray(matriz)
+        largura = max(80, min(640, largura))
+        img.thumbnail((largura, largura), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.convert("RGB").save(buf, "JPEG", quality=80)
+        return Response(buf.getvalue(), media_type="image/jpeg",
+                        headers={"Cache-Control": "max-age=3600"})
 
     @app.get("/api/videos/{vid}/arquivo")
     def video_original(vid: str):

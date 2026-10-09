@@ -7,10 +7,14 @@ import {falaEfetiva, opcoesDeFala, semSom} from '../fala';
 import {ORDEM, PLATAFORMAS, type Plataforma, juntar} from '../plataformas';
 import {bytes, duracao, numero} from '../formatar';
 import type {
-  AudioInfo, BibliotecaInfo, Edicao, EstiloDaLegenda, Estado, Fala, FonteDoFundo, FormatoDoQuadro, Modo,
-  MontagemConfig, PersonagemInfo, PorCima, Preset, Saida, VideoInfo, Voz,
+  AudioInfo, BibliotecaInfo, CenaDaMatriz, Edicao, EstiloDaLegenda, Estado, Fala, FonteDoFundo, FormatoDoQuadro,
+  Modo, MontagemConfig, PersonagemInfo, PorCima, Preset, Saida, VideoInfo, Voz,
 } from '../tipos';
 import {Interruptor} from './Interruptor';
+import {RevisaoDaMatriz} from './RevisaoDaMatriz';
+
+/** A matriz na tabela de revisão: as linhas e quem as escreveu. */
+export type Revisao = {linhas: CenaDaMatriz[]; por: string; aviso: string; pedidos: number};
 
 const Cabeca: React.FC<{n: number; titulo: string; texto: string}> = ({n, titulo, texto}) => (
   <header>
@@ -173,6 +177,16 @@ export type PropsDoEnvio = {
   /** A pasta já chegou e falta a matriz. */
   faltaMatriz: boolean;
   enviandoBiblioteca: string | null;
+  /** A biblioteca aberta no servidor (depois da pasta), para a matriz e as miniaturas. */
+  bibliotecaId: string | null;
+  /** O Gemini descrevendo as cenas, e a matriz na tabela de revisão. */
+  gerandoMatriz: {prontas: number; total: number; pedidos: number} | null;
+  revisao: Revisao | null;
+  salvandoMatriz: boolean;
+  aoGerarMatriz: (assunto: string) => void;
+  aoRevisarMatriz: () => void;
+  aoUsarMatriz: (linhas: CenaDaMatriz[]) => void;
+  aoFecharRevisao: () => void;
   montagem: MontagemConfig;
   mudarMontagem: (p: Partial<MontagemConfig>) => void;
   progresso: Record<Envio, number | null>;
@@ -198,6 +212,43 @@ const NOMES_DA_FALA: Record<Fala, string> = {fundo: 'O vídeo de fundo', pessoa:
 const FONTES_DO_FUNDO: [FonteDoFundo, string][] = [['video', 'Um vídeo'], ['cenas', 'Biblioteca de cenas']];
 const POR_CIMA: [PorCima, string][] = [['pessoa', 'Vídeo da pessoa'], ['personagem', 'Personagem animado'],
   ['nada', 'Nada']];
+
+/** Sem matriz (ou para trocar a que veio): o Gemini descreve as cenas, e a pessoa revisa. */
+const GerarMatriz: React.FC<PropsDoEnvio> = (p) => {
+  const [assunto, setAssunto] = useState('');
+  const g = p.gerandoMatriz;
+  return (
+    <div className="gerar-matriz">
+      <label className="campo">
+        <span>{p.biblioteca ? 'Ou gere uma nova com o Gemini' : 'Sem matriz? O Gemini descreve as cenas'}</span>
+        <input type="text" value={assunto} maxLength={200} disabled={Boolean(g)}
+          placeholder="do que são as cenas (opcional): trailers do GTA 6"
+          onChange={(e) => setAssunto(e.target.value)} />
+        <small>
+          Ele vê 3 quadros de cada clipe, 12 clipes por pedido da cota grátis, e escreve a descrição, as
+          categorias, a energia e a monetização. Você revisa numa tabela antes de usar. Sem a chave (passo 5), sai
+          um rascunho com o nome de cada arquivo.
+        </small>
+      </label>
+      <div className="linha-de-opcoes">
+        <button type="button" className="botao pequeno" disabled={Boolean(g)}
+          onClick={() => p.aoGerarMatriz(assunto)}>
+          {g ? 'Gerando…' : p.biblioteca ? 'Gerar de novo' : 'Gerar a matriz'}
+        </button>
+        {p.biblioteca ? (
+          <button type="button" className="botao pequeno" disabled={Boolean(g)} onClick={p.aoRevisarMatriz}>
+            Revisar a matriz
+          </button>
+        ) : null}
+      </div>
+      {g ? (
+        <small className="andamento" aria-live="polite">
+          Descrevendo {g.prontas} de {g.total} cenas… ({g.pedidos} {g.pedidos === 1 ? 'pedido' : 'pedidos'} ao Gemini)
+        </small>
+      ) : null}
+    </div>
+  );
+};
 
 const EnvioDaMontagem: React.FC<PropsDoEnvio> = (p) => {
   const m = p.montagem;
@@ -230,8 +281,14 @@ const EnvioDaMontagem: React.FC<PropsDoEnvio> = (p) => {
                 dica="o cenas.json: uma lista com o arquivo e a descrição de cada cena" aceita=".json,application/json"
                 progresso={null} aoEscolher={p.aoEscolherMatriz} />
             ) : null}
+            {p.faltaMatriz || p.biblioteca ? <GerarMatriz {...p} /> : null}
             <Aviso texto={p.erro.biblioteca} />
             {p.biblioteca ? <FichaDaBiblioteca b={p.biblioteca} /> : null}
+            {p.revisao && p.bibliotecaId ? (
+              <RevisaoDaMatriz biblioteca={p.bibliotecaId} linhas={p.revisao.linhas} por={p.revisao.por}
+                aviso={p.revisao.aviso} pedidos={p.revisao.pedidos} salvando={p.salvandoMatriz}
+                aoUsar={p.aoUsarMatriz} aoFechar={p.aoFecharRevisao} />
+            ) : null}
           </>
         ) : (
           <>

@@ -131,6 +131,15 @@ class ErroDaIA(RuntimeError):
     """Um problema que a página mostra como está — a mensagem já é para quem usa."""
 
 
+class Bloqueado(ErroDaIA):
+    """O Gemini se recusou a responder sobre o conteúdo (nudez, violência…). Os outros
+    modelos da escada recusariam igual: ninguém tenta de novo."""
+
+
+#: Os motivos de fim de resposta que são recusa pelo conteúdo, e não falha.
+RECUSAS = frozenset({"SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "IMAGE_SAFETY"})
+
+
 # ── a chave ──────────────────────────────────────────────────────────────
 # Guardada por ``editor.chaves``, junto com a do Pexels, nas mesmas regras.
 
@@ -333,7 +342,7 @@ def _gerar(cliente, modelo: str, chave_: str, corpo: dict) -> str:
     dados = r.json()
     bloqueio = (dados.get("promptFeedback") or {}).get("blockReason")
     if bloqueio:
-        raise ErroDaIA(f"O Gemini se recusou a sugerir thumbnails para este vídeo ({bloqueio}).")
+        raise Bloqueado(f"O Gemini se recusou a responder sobre este conteúdo ({bloqueio}).")
     candidatos = dados.get("candidates") or []
     if not candidatos:
         raise _Pular(f"{modelo}: resposta vazia")
@@ -342,6 +351,8 @@ def _gerar(cliente, modelo: str, chave_: str, corpo: dict) -> str:
         raise _Pular(f"{modelo}: a resposta foi cortada por falta de espaço")
     texto = "".join(p.get("text", "") for p in (candidatos[0].get("content") or {})
                     .get("parts", []) if not p.get("thought"))
+    if not texto.strip() and fim in RECUSAS:
+        raise Bloqueado(f"O Gemini se recusou a responder sobre este conteúdo ({fim}).")
     if not texto.strip():
         raise _Pular(f"{modelo}: resposta vazia ({fim})")
     return texto
@@ -416,15 +427,17 @@ def _perguntar(chave_: str, sistema: str, pedido: str, imagens: Sequence[bytes],
 
 
 def perguntar_json(sistema: str, pedido: str, esquema_: dict, *, temperatura: float,
-                   transporte=None, gasto: list[str] | None = None) -> tuple[dict, str]:
-    """Um pedido só de texto, com a chave salva, descendo a escada de modelos (usado pelo
-    roteiro do vídeo: as cenas e os cartões). Levanta :class:`ErroDaIA` sem chave."""
+                   transporte=None, gasto: list[str] | None = None,
+                   imagens: Sequence[bytes] = ()) -> tuple[dict, str]:
+    """Um pedido com a chave salva, descendo a escada de modelos: só de texto (o roteiro
+    do vídeo: as cenas e os cartões) ou com imagens JPEG antes do texto (a descrição das
+    cenas da biblioteca). Levanta :class:`ErroDaIA` sem chave."""
     valor, _origem = chave()
     if not valor:
         raise ErroDaIA("Falta a chave do Gemini: cole a sua no passo 5 "
                        f"(crie uma em {ONDE_PEGAR_A_CHAVE}).")
-    return _perguntar(valor, sistema, pedido, [], esquema_, temperatura=temperatura,
-                      transporte=transporte, gasto=gasto)
+    return _perguntar(valor, sistema, pedido, list(imagens), esquema_,
+                      temperatura=temperatura, transporte=transporte, gasto=gasto)
 
 
 def ligada() -> bool:
@@ -968,6 +981,8 @@ __all__ = [
     "LUZES",
     "MAOS",
     "MODELOS",
+    "RECUSAS",
+    "Bloqueado",
     "ErroDaIA",
     "apagar_chave",
     "chave",

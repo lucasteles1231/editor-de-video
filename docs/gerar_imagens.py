@@ -19,9 +19,10 @@ Gera em ``docs/img/``:
   recortada pelo MODNet;
 - ``interface-montagem.png``: o passo 1 na montagem, com o fundo, um personagem de
   palito (desenhado aqui mesmo, sem licença de ninguém) e a narração do exemplo;
-- ``interface-noticia.png`` e ``interface-tour.png``: o passo 1 com a biblioteca de cenas
-  (clipes feitos das próprias imagens do README, com uma matriz), o palito e dois áudios;
-  e o tour no passo que explica os dois jeitos de usar. Não precisam do exemplo;
+- ``interface-noticia.png``, ``interface-matriz.png`` e ``interface-tour.png``: o passo 1
+  com a biblioteca de cenas (clipes feitos das próprias imagens do README, com uma
+  matriz), o palito e dois áudios; a tabela de revisão da matriz; e o tour no passo que
+  explica os dois jeitos de usar. Não precisam do exemplo;
 - ``interface*.png``: a página, pelo Playwright (precisa do Chromium:
   ``uv run playwright install chromium``), como ela chega para quem instala: sem chave
   nenhuma. A chave de quem gera as imagens nem é lida, porque o final dela apareceria;
@@ -172,14 +173,19 @@ def biblioteca_de_exemplo(pasta: Path) -> Path:
 
     cenas = pasta / "cenas"
     (cenas / "clipes").mkdir(parents=True, exist_ok=True)
-    fontes = {"estudio-microfone": ("quadro-legenda.png", "Homem fala ao microfone num estúdio"),
-              "adesivo-amarelo": ("quadro-adesivo.png", "A palavra salta num balão amarelo"),
-              "icone-moeda": ("quadro-icone.png", "Uma moeda aparece ao lado de quem fala"),
-              "tela-do-editor": ("quadro-montagem.png", "A tela do editor gravada"),
-              "antes-e-depois": ("antes-depois.png", "O mesmo quadro, antes e depois"),
-              "capa-do-editor": ("banner.png", "A capa do editor de vídeo")}
+    fontes = {"estudio-microfone": ("quadro-legenda.png", "Homem fala ao microfone num estúdio",
+                                    ["podcast", "close"]),
+              "adesivo-amarelo": ("quadro-adesivo.png", "A palavra salta num balão amarelo",
+                                  ["podcast", "legenda"]),
+              "icone-moeda": ("quadro-icone.png", "Uma moeda aparece ao lado de quem fala",
+                              ["dinheiro", "podcast"]),
+              "tela-do-editor": ("quadro-montagem.png", "A tela do editor gravada, com a pessoa "
+                                 "por cima", ["tela", "tutorial"]),
+              "antes-e-depois": ("antes-depois.png", "O mesmo quadro, antes e depois",
+                                 ["comparacao"]),
+              "capa-do-editor": ("banner.png", "A capa do editor de vídeo", ["cartela"])}
     matriz = []
-    for k, (nome, (imagem, descricao)) in enumerate(fontes.items()):
+    for k, (nome, (imagem, descricao, categorias)) in enumerate(fontes.items()):
         with Image.open(IMG / imagem) as im:
             im = im.convert("RGB")
             alto = min(im.height, round(im.width * 9 / 16))
@@ -197,8 +203,11 @@ def biblioteca_de_exemplo(pasta: Path) -> Path:
             for pacote in v.encode():
                 c.mux(pacote)
         matriz.append({"id": f"c{k + 1:02d}", "arquivo": f"clipes/{nome}.mp4",
-                       "descricao": descricao, "energia": "alta" if k == 0 else "media",
-                       "monetizacao": "evitar" if nome == "antes-e-depois" else "ok"})
+                       "descricao": descricao, "categorias": categorias,
+                       "periodo": "n/a" if nome in ("tela-do-editor", "capa-do-editor")
+                       else "interno", "energia": "alta" if k == 0 else "media",
+                       "monetizacao": "evitar" if nome == "antes-e-depois" else "ok",
+                       "obs": "texto na tela" if nome == "capa-do-editor" else ""})
     (cenas / "cenas.json").write_text(json.dumps(matriz, ensure_ascii=False, indent=2),
                                       encoding="utf-8")
     return cenas
@@ -540,6 +549,16 @@ def capturas_da_noticia(nav, url: str, pasta: Path) -> None:
     # O cabeçalho fica preso no topo e cobriria o começo do passo na captura do elemento.
     estilo = pagina.add_style_tag(content=".cabecalho { position: static !important; }")
     salvar(pagina.locator("#passo-envio").screenshot(), "interface-noticia.png", 1200)
+
+    # A tabela de revisão, com a matriz em uso.
+    pagina.get_by_role("button", name="Revisar a matriz").click()
+    revisao = pagina.get_by_role("region", name="revisão da matriz")
+    revisao.locator("img").first.wait_for()
+    pagina.wait_for_function("[...document.querySelectorAll('.revisao img')]"
+                             ".slice(0, 3).every(i => i.complete && i.naturalWidth > 0)")
+    pagina.wait_for_timeout(500)
+    salvar(revisao.screenshot(), "interface-matriz.png", 1200)
+    revisao.get_by_role("button", name="Fechar").click()
     estilo.evaluate("e => e.remove()")
 
     # O tour, no primeiro passo: os dois jeitos de usar.

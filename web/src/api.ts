@@ -3,8 +3,8 @@
  * URL aberta pelo comando `editar` e fica guardado na aba (sessionStorage).
  */
 import type {
-  AudioInfo, BibliotecaInfo, Edicao, Estado, EstadoChave, EstadoIa, FotoPexels, Ideia, ImagemFundo, PersonagemInfo,
-  RecorteInfo, Saida, Tarefa, VideoInfo,
+  AudioInfo, BibliotecaInfo, Edicao, Estado, EstadoChave, EstadoIa, FotoPexels, GeracaoDaMatriz, Ideia, ImagemFundo,
+  PersonagemInfo, RecorteInfo, Saida, Tarefa, VideoInfo,
 } from './tipos';
 
 const CHAVE = 'editor-token';
@@ -88,6 +88,16 @@ export const api = {
     enviarArquivo<{clipes: number}>(`/api/bibliotecas/${biblioteca}/clipes`, arquivo, aoProgresso),
   enviarMatriz: (biblioteca: string, arquivo: File) =>
     enviarArquivo<BibliotecaInfo>(`/api/bibliotecas/${biblioteca}/matriz`, arquivo, () => undefined),
+  /** O Gemini descreve os clipes da biblioteca (em segundo plano: acompanhe pelo andamento). */
+  gerarMatriz: (biblioteca: string, assunto: string) =>
+    pedir<GeracaoDaMatriz>(`/api/bibliotecas/${biblioteca}/gerar-matriz`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({assunto}),
+    }),
+  andamentoDaMatriz: (biblioteca: string) => pedir<GeracaoDaMatriz>(`/api/bibliotecas/${biblioteca}/gerar-matriz`),
+  matrizAtual: (biblioteca: string) =>
+    pedir<{cenas: Record<string, unknown>[]}>(`/api/bibliotecas/${biblioteca}/matriz`),
+  quadroDaCenaUrl: (biblioteca: string, arquivo: string) =>
+    comToken(`/api/bibliotecas/${biblioteca}/quadro?arquivo=${encodeURIComponent(arquivo)}&largura=320`),
 
   /** Edita um vídeo só (``videoId``) ou a montagem em camadas. */
   criarTarefa: (alvo: {videoId: string} | {montagem: PedidoDeMontagem}, edicao: Edicao, saida: Saida,

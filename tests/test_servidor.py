@@ -600,3 +600,52 @@ class TestABiblioteca:
         assert Path(resultado["video"]).name == "cenas-editado.mp4"
         plano = json.loads(Path(resultado["plano"]).read_text(encoding="utf-8"))
         assert {b["tipo"] for b in plano["blocos"]} <= {"linha", "pilula"}
+
+
+class TestAMatrizGerada:
+    """O botão "Gerar a matriz": o Gemini (aqui, a IA de teste) descreve os clipes em
+    segundo plano, a página acompanha, mostra as miniaturas e salva o que foi revisado."""
+
+    def _abrir_sem_matriz(self, cliente, tmp_path) -> str:
+        bid = cliente.post("/api/bibliotecas", headers=CABECA, json={"nome": "cenas"}).json()["id"]
+        for nome in ("a.mp4", "b.mp4"):
+            c = fazer_video(tmp_path / nome, largura=320, altura=180, segundos=1.0,
+                            com_audio=False)
+            with open(c, "rb") as f:
+                cliente.post(f"/api/bibliotecas/{bid}/clipes", headers=CABECA,
+                             files={"arquivo": (nome, f, "video/mp4")})
+        return bid
+
+    def test_gera_acompanha_e_salva(self, cliente, tmp_path):
+        bid = self._abrir_sem_matriz(cliente, tmp_path)
+        r = cliente.post(f"/api/bibliotecas/{bid}/gerar-matriz", headers=CABECA,
+                         json={"assunto": "um jogo"})
+        assert r.status_code == 200 and r.json()["total"] == 2
+        fim = time.monotonic() + 30
+        while True:
+            estado = cliente.get(f"/api/bibliotecas/{bid}/gerar-matriz", headers=CABECA).json()
+            if not estado["rodando"] or time.monotonic() > fim:
+                break
+            time.sleep(0.1)
+        assert estado["erro"] == "" and estado["por"] == "falsa"
+        assert [c["arquivo"] for c in estado["cenas"]] == ["a.mp4", "b.mp4"]
+        quadro = cliente.get(f"/api/bibliotecas/{bid}/quadro?arquivo=a.mp4", headers=CABECA)
+        assert quadro.status_code == 200 and quadro.content[:2] == b"\xff\xd8"
+        assert cliente.get(f"/api/bibliotecas/{bid}/quadro?arquivo=../../segredo.mp4",
+                           headers=CABECA).status_code == 404
+        # a revisada vale como o cenas.json enviado, e volta para revisar de novo
+        revisada = [{**c, "descricao": "Revisada à mão"} for c in estado["cenas"]]
+        r = cliente.post(f"/api/bibliotecas/{bid}/matriz", headers=CABECA,
+                         files={"arquivo": ("cenas.json", json.dumps(revisada).encode(),
+                                            "application/json")})
+        assert r.status_code == 200 and r.json()["cenas"] == 2
+        atual = cliente.get(f"/api/bibliotecas/{bid}/matriz", headers=CABECA).json()["cenas"]
+        assert {c["descricao"] for c in atual} == {"Revisada à mão"}
+
+    def test_sem_clipes_e_sem_matriz(self, cliente):
+        bid = cliente.post("/api/bibliotecas", headers=CABECA, json={}).json()["id"]
+        assert cliente.post(f"/api/bibliotecas/{bid}/gerar-matriz", headers=CABECA,
+                            json={}).status_code == 422
+        assert cliente.get(f"/api/bibliotecas/{bid}/gerar-matriz",
+                           headers=CABECA).status_code == 404
+        assert cliente.get(f"/api/bibliotecas/{bid}/matriz", headers=CABECA).status_code == 404

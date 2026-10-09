@@ -104,9 +104,9 @@ sugestões do Gemini, com uma chave grátis sua.
   <tr>
     <td><img src="docs/img/funcoes/cenas.svg" width="44" alt=""></td>
     <td><b>Biblioteca de cenas.</b> Opcional, na montagem. No lugar do vídeo de fundo, uma
-    pasta de clipes curtos e uma matriz que descreve cada um (o <code>cenas.json</code>).
-    O Gemini escolhe, trecho a trecho, as cenas que mostram o que está sendo dito; sem
-    ele, as palavras escolhem. A cena toca numa janela com câmera, e o personagem fica em
+    pasta de clipes curtos e uma matriz que descreve cada um (o <code>cenas.json</code>),
+    que o próprio editor gera se você não tiver. O Gemini escolhe, trecho a trecho, as
+    cenas que mostram o que está sendo dito; sem ele, as palavras escolhem. A cena toca numa janela com câmera, e o personagem fica em
     pé na borda dela. Veja <a href="#biblioteca-de-cenas">Biblioteca de cenas</a>.</td>
   </tr>
   <tr>
@@ -188,7 +188,7 @@ Você traz:
 | O quê | Como |
 |---|---|
 | **A pasta das cenas** | clipes curtos, de uns 2 s cada; as subpastas também valem |
-| **A matriz** | o `cenas.json`, dentro da pasta, com o arquivo e a descrição de cada cena (o formato está em [Biblioteca de cenas](#biblioteca-de-cenas)) |
+| **A matriz** | o `cenas.json`, dentro da pasta, com o arquivo e a descrição de cada cena (o formato está em [Biblioteca de cenas](#biblioteca-de-cenas)). Não tem? O botão **Gerar a matriz** escreve para você ([Gerar a matriz](#gerar-a-matriz)) |
 | **A narração** | um arquivo de áudio, ou vários, um por parágrafo, que tocam na ordem do nome |
 | **O personagem** (opcional) | um GIF, PNG animado ou WebP, com a boca fechada no primeiro quadro |
 | **A chave do Gemini** (opcional e grátis) | colada no passo 5. Sem ela, as cenas saem pelas palavras e não há cartões |
@@ -197,7 +197,8 @@ Você traz:
 
 1. No passo 1, escolha **Um fundo e, por cima…** e, em **O fundo**, **Biblioteca de
    cenas**. Arraste a pasta: os clipes sobem, e o `cenas.json` de dentro dela entra
-   junto. A ficha mostra quantas cenas entraram e quantas ficaram de fora.
+   junto. Sem ele, clique em **Gerar a matriz** e revise a tabela. A ficha mostra quantas
+   cenas entraram e quantas ficaram de fora.
 2. Em **Por cima**, envie o personagem (ou escolha **Nada**). Em **O áudio vem de**,
    envie os arquivos da narração.
 3. Em **Onde você vai postar**, marque Shorts, TikTok ou Reels para o vídeo sair em pé.
@@ -423,6 +424,41 @@ A matriz é uma lista em JSON, ou `{"cenas": [...]}`:
 
 A página mostra a ficha: quantas cenas entraram, quantas ficaram de fora por "evitar",
 quais clipes não têm descrição e quais descrições não têm clipe.
+
+#### Gerar a matriz
+
+Você já cortou os clipes e não tem o `cenas.json`? Depois de arrastar a pasta, clique em
+**Gerar a matriz**. O campo ao lado, opcional, diz do que são as cenas ("trailers do GTA
+6"): com ele, o Gemini reconhece os personagens.
+
+<img src="docs/img/interface-matriz.png" alt="A tabela de revisão da matriz: cada cena com a miniatura, a descrição, as categorias, os personagens, a energia, o período, a monetização e a observação, e os botões Usar esta matriz e Baixar o cenas.json" width="420" align="right">
+
+- **O Gemini vê** 3 quadros de cada clipe (começo, meio e fim), 12 clipes por pedido, e
+  escreve a descrição, as categorias, os personagens que ele reconhece, o período, a
+  energia (o clima da cena, e não o movimento da câmera), a monetização e o que atrapalha
+  usar a cena de fundo (texto na tela, logo, troca de plano no meio).
+- **O custo:** 128 clipes são uns 11 pedidos da cota grátis. Cada pedido levou perto de
+  50 s no teste, então a biblioteca inteira deve levar uns 10 minutos. O que já foi
+  descrito fica guardado: gerar de novo, ou depois que a cota acabou, só pede o que
+  falta.
+- **A cena que o Gemini se recusa a descrever** (nudez, por exemplo) fica marcada como
+  "evitar", com um aviso, e o resto do lote segue.
+- **Sem a chave**, sai um rascunho: a descrição vem do nome de cada arquivo, e a energia,
+  do movimento medido no clipe.
+- **A tabela de revisão** mostra cada cena com a miniatura e os campos editáveis. Corrija
+  o que estiver errado e marque como "Evitar" o que não pode entrar. **Usar esta matriz**
+  faz ela valer, e **Baixar o cenas.json** guarda o arquivo para pôr junto dos clipes: da
+  próxima vez, ele entra sozinho. **Revisar a matriz** reabre a tabela com a matriz em
+  uso, também a que veio na pasta.
+- **No terminal,** `editar --gerar-matriz cenas/ --assunto "trailers do GTA 6"` escreve
+  o `cenas.json` na pasta (ou `cenas-gerada.json`, se já existe um).
+
+Num teste com 8 cenas do vídeo de referência, comparadas com as descrições escritas à
+mão, o Gemini acertou o assunto de todas, marcou o clube de strip como "evitar" e
+reconheceu a personagem principal pelo assunto. Ainda assim, revise: é da descrição que
+sai a escolha das cenas.
+
+<br clear="right">
 
 A fala é dividida em trechos de 2 a 6 s, fechados no fim das frases, e cada trecho ganha
 uma cena a cada 2 s, mais ou menos:
@@ -756,6 +792,7 @@ editar video.mp4 --tema-dos-sons humor --som-nos-cortes
 editar video.mp4 --sem-zoom --sem-sons            # sem zoom e sem efeitos sonoros
 editar eu.mp4 --fundo tela.mp4 --quadro vertical  # você por cima da tela gravada, em pé
 editar --fundo jogo.mp4 --personagem boneco.gif --audio narracao.m4a
+editar --gerar-matriz cenas/ --assunto "trailers do GTA 6"   # escreve cenas/cenas.json
 editar --cenas cenas/ --matriz cenas/cenas.json --audio p1.m4a p2.m4a p3.m4a \
        --personagem boneco.gif --preset noticia --quadro vertical
 editar video.mp4 --voz limpa --bipe "palavra, outra"  # voz limpa e bipe na lista
@@ -797,6 +834,8 @@ editar --formatos                                 # o que este computador grava
 | `--fundo` | a montagem: o vídeo de fundo, sem pessoa | |
 | `--cenas PASTA` | a montagem com a biblioteca de cenas: a pasta dos clipes | |
 | `--matriz ARQUIVO` | a matriz da biblioteca (o `cenas.json`) | |
+| `--gerar-matriz PASTA` | escreve o `cenas.json` de uma pasta de clipes (o Gemini descreve; sem ele, um rascunho) | |
+| `--assunto TEXTO` | com `--gerar-matriz`: do que são as cenas, para reconhecer personagens | |
 | `--janela`, `--sem-janela` | a cena numa janela 16:9 com câmera | sem |
 | `--pessoa` | o vídeo de você falando, por cima do fundo | o vídeo do argumento |
 | `--personagem` | um GIF, PNG animado ou WebP, em loop por cima | |

@@ -131,6 +131,18 @@ export type BibliotecaInfo = {
   sem_clipe: string[]; sem_descricao: string[]; capa: VideoInfo;
 };
 
+/** Uma cena da matriz, como a tabela de revisão edita: as listas em texto, com vírgulas. */
+export type CenaDaMatriz = {
+  id: string; arquivo: string; descricao: string; categorias: string; personagens: string;
+  periodo: string; energia: string; monetizacao: string; obs: string; duracao?: number;
+};
+
+/** A matriz sendo gerada pelo Gemini, e o resultado para revisar. */
+export type GeracaoDaMatriz = {
+  rodando: boolean; prontas: number; total: number; pedidos: number;
+  por: string; aviso: string; erro: string; cenas: Record<string, unknown>[] | null;
+};
+
 /** Quem escreveu o roteiro (as cenas e os cartões) e quanto. */
 export type ResumoDoRoteiro = {por: string; aviso: string; pedidos: number; cenas: number; cartoes: number};
 

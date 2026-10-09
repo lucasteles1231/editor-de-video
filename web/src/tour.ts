@@ -36,7 +36,7 @@ export function comecarTour(): void {
           align: 'start',
           title: '1. Envie o vídeo',
           description: '<b>Um vídeo com você falando</b>, vertical ou horizontal. Ou <b>um fundo e, por cima…</b>, em camadas:<br>'
-            + '• <b>o fundo:</b> um vídeo, ou a <b>biblioteca de cenas</b>: arraste a pasta, e a matriz <code>cenas.json</code> que estiver dentro entra junto;<br>'
+            + '• <b>o fundo:</b> um vídeo, ou a <b>biblioteca de cenas</b>: arraste a pasta, e a matriz <code>cenas.json</code> que estiver dentro entra junto. Sem matriz, o botão <b>Gerar a matriz</b> pede ao Gemini a descrição de cada cena, e você revisa numa tabela;<br>'
             + '• <b>por cima:</b> o vídeo da pessoa, um personagem animado (GIF) ou nada;<br>'
             + '• <b>o áudio:</b> do vídeo, ou arquivos separados, um por parágrafo, que tocam na ordem do nome.<br>'
             + 'Os arquivos são copiados para uma pasta do seu computador.',

@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 import threading
 import time
+from pathlib import Path
 
 import pytest
 from PIL import Image
@@ -299,6 +300,51 @@ def test_biblioteca_de_cenas(navegador, endereco, tmp_path):
     expect(pagina.locator(".painel .roteiro")).to_contain_text("Roteiro da IA de teste",
                                                                timeout=180_000)
     assert list((tmp_path / "saida").glob("cenas-editado.mp4"))
+    assert not erros, erros
+
+
+def test_gerar_e_revisar_a_matriz(navegador, endereco, tmp_path):
+    """Uma pasta sem matriz: o Gemini (aqui, a IA de teste) descreve as cenas, a tabela
+    mostra cada uma com a miniatura, a pessoa corrige uma descrição e usa a matriz."""
+    pagina = navegador.new_page(viewport={"width": 1366, "height": 1100})
+    pagina.add_init_script("localStorage.setItem('editor-tour-visto', '1')")
+    erros: list[str] = []
+    pagina.on("pageerror", lambda e: erros.append(str(e)))
+    pagina.on("console", lambda m: m.type == "error" and erros.append(m.text))
+    pagina.goto(endereco)
+
+    pasta = tmp_path / "minhas cenas"
+    pasta.mkdir()
+    for nome in ("c01-praia.mp4", "c02-carro.mp4", "c03-festa.mp4"):
+        fazer_video(pasta / nome, largura=320, altura=180, segundos=1.0, com_audio=False)
+    pagina.get_by_role("button", name="Um fundo e, por cima").click()
+    pagina.get_by_role("button", name="Biblioteca de cenas").click()
+    pagina.set_input_files('[data-envio="cenas"] input', str(pasta))
+    gerar = pagina.get_by_role("button", name="Gerar a matriz")
+    expect(gerar).to_be_visible(timeout=30_000)
+    pagina.get_by_placeholder("do que são as cenas").fill("um jogo de corrida")
+    gerar.click()
+    revisao = pagina.get_by_role("region", name="revisão da matriz")
+    expect(revisao).to_contain_text("3 cenas", timeout=30_000)
+    expect(revisao).to_contain_text("IA de teste")
+    expect(revisao.locator("img")).to_have_count(3)
+    descricao = revisao.get_by_label("descrição de c02-carro.mp4")
+    descricao.fill("Carro vermelho correndo na pista")
+    revisao.get_by_label("monetização de c03-festa.mp4").select_option("evitar")
+    with pagina.expect_download() as baixado:
+        revisao.get_by_role("button", name="Baixar o cenas.json").click()
+    import json as _json
+    salvo = _json.loads(Path(baixado.value.path()).read_text(encoding="utf-8"))
+    assert salvo[1]["descricao"] == "Carro vermelho correndo na pista"
+    revisao.get_by_role("button", name="Usar esta matriz").click()
+    ficha = pagina.get_by_label("dados da biblioteca de cenas")
+    expect(ficha).to_contain_text("2 cenas", timeout=30_000)           # a festa ficou de fora
+    expect(ficha).to_contain_text("1 marcada “evitar”")
+    expect(revisao).to_have_count(0)
+    # e dá para voltar à tabela com a matriz em uso
+    pagina.get_by_role("button", name="Revisar a matriz").click()
+    expect(pagina.get_by_label("descrição de c02-carro.mp4")).to_have_value(
+        "Carro vermelho correndo na pista")
     assert not erros, erros
 
 

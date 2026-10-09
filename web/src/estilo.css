@@ -904,3 +904,76 @@ button.link { padding: 0; border: none; background: none; color: inherit; font: 
 
 /* Quem escreveu o roteiro, embaixo dos números do resultado. */
 .painel .roteiro { margin: 12px 0 0; font-size: 13.5px; color: var(--tinta-suave); }
+
+/* ── a matriz gerada e a tabela de revisão (passo 1, biblioteca de cenas) ─ */
+
+.gerar-matriz { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.gerar-matriz .andamento { font-variant-numeric: tabular-nums; }
+
+.revisao {
+  margin-top: 14px;
+  border: 2px solid var(--linha);
+  border-radius: 14px;
+  background: var(--cartao);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.revisao-topo { display: flex; flex-direction: column; gap: 6px; }
+.revisao-topo small { color: var(--tinta-suave); }
+.revisao-lista {
+  display: grid;
+  gap: 10px;
+  max-height: 62vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.revisao-cena {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 12px;
+  padding: 10px;
+  border: 2px solid var(--linha);
+  border-radius: 12px;
+  background: var(--papel);
+}
+.revisao-cena.evitar { border-color: var(--rosa); }
+.revisao-cena img {
+  width: 160px;
+  height: 90px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--linha);
+}
+.revisao-campos { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.revisao-arquivo { color: var(--tinta-suave); font-size: 12px; overflow-wrap: anywhere; }
+.revisao-linha { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 6px; }
+.revisao textarea {
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+  font-size: 13.5px;
+  line-height: 1.35;
+  padding: 6px 9px;
+  border: 2px solid var(--linha);
+  border-radius: 9px;
+  background: var(--cartao);
+  color: var(--tinta);
+}
+/* Mais compactos que os campos do resto da página: são muitas cenas em fila. */
+.revisao input[type='text'], .revisao select {
+  width: 100%;
+  min-width: 0;
+  padding: 5px 9px;
+  font-size: 13.5px;
+  border-radius: 9px;
+}
+.revisao-botoes { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.revisao-botoes .usar { background: var(--amarelo); color: #1a1a1a; }
+.revisao-botoes small { color: var(--tinta-suave); }
+@media (max-width: 560px) {
+  .revisao-cena { grid-template-columns: minmax(0, 1fr); }
+  .revisao-cena img { width: 100%; height: auto; aspect-ratio: 16 / 9; }
+}
+

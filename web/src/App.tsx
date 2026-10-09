@@ -6,13 +6,14 @@ import {
 } from './plataformas';
 import {aplicarPreset, presetMarcado} from './presets';
 import {Painel} from './componentes/Painel';
-import {type Envio, PassoEdicoes, PassoEnvio, PassoLegenda, PassoSaida} from './componentes/Passos';
+import {type Envio, PassoEdicoes, PassoEnvio, PassoLegenda, PassoSaida, type Revisao} from './componentes/Passos';
+import {paraJson, paraLinhas} from './matriz';
 import {ThumbPasso, chaveDoRecorte, propsDaThumb, type Recortes} from './componentes/ThumbPasso';
 import {PROPORCAO} from './componentes/thumb/AbaFundo';
 import {gerarPng} from './thumb/exportar';
 import {carregarFonte} from './thumb/medida';
 import type {
-  AudioInfo, BibliotecaInfo, Camadas, Edicao, Estado, EstadoChave, EstadoIa, Ideia, Modo, MontagemConfig,
+  AudioInfo, BibliotecaInfo, Camadas, CenaDaMatriz, Edicao, Estado, EstadoChave, EstadoIa, Ideia, Modo, MontagemConfig,
   PersonagemInfo, Preset, RecorteInfo, Saida, Tarefa, ThumbConfig, VideoInfo,
 } from './tipos';
 import {comecarTour, tourJaVisto} from './tour';
@@ -112,6 +113,9 @@ export const App: React.FC = () => {
   // A pasta já subiu (e falta a matriz): o id da biblioteca aberta no servidor.
   const [bibliotecaAberta, setBibliotecaAberta] = useState<string | null>(null);
   const [enviandoBiblioteca, setEnviandoBiblioteca] = useState<string | null>(null);
+  const [gerandoMatriz, setGerandoMatriz] = useState<{prontas: number; total: number; pedidos: number} | null>(null);
+  const [revisao, setRevisao] = useState<Revisao | null>(null);
+  const [salvandoMatriz, setSalvandoMatriz] = useState(false);
   const [montagem, setMontagem] = useState<MontagemConfig>(MONTAGEM_PADRAO);
   const [envios, setEnvios] = useState(NADA_ENVIANDO);
   const [errosDeEnvio, setErrosDeEnvio] = useState(SEM_ERRO);
@@ -301,19 +305,65 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  /** A matriz da biblioteca aberta: devolve a ficha e a capa, de onde a thumbnail tira os quadros. */
-  const enviarMatriz = useCallback(async (id: string, arquivo: File) => {
+  /** A matriz da biblioteca aberta: devolve a ficha e a capa, de onde a thumbnail tira os quadros.
+   *  Diz se deu certo (a tabela de revisão só fecha se deu). */
+  const enviarMatriz = useCallback(async (id: string, arquivo: File): Promise<boolean> => {
     setEnviandoBiblioteca('Lendo a matriz…');
+    setErrosDeEnvio((x) => ({...x, biblioteca: ''}));
     try {
       const b = await api.enviarMatriz(id, arquivo);
       setBiblioteca(b);
       if (montagem.porCima !== 'pessoa') novoQuadroDaThumb(b.capa);
+      return true;
     } catch (e) {
       setErrosDeEnvio((x) => ({...x, biblioteca: (e as Error).message}));
+      return false;
     } finally {
       setEnviandoBiblioteca(null);
     }
   }, [montagem.porCima, novoQuadroDaThumb]);
+
+  /** O Gemini descreve os clipes em segundo plano; a página acompanha e, no fim, abre a
+   *  tabela de revisão. */
+  const gerarMatriz = useCallback(async (assunto: string) => {
+    if (!bibliotecaAberta) return;
+    setErrosDeEnvio((x) => ({...x, biblioteca: ''}));
+    setRevisao(null);
+    try {
+      let g = await api.gerarMatriz(bibliotecaAberta, assunto);
+      setGerandoMatriz({prontas: g.prontas, total: g.total, pedidos: g.pedidos});
+      while (g.rodando) {
+        await new Promise((ok) => setTimeout(ok, 1200));
+        g = await api.andamentoDaMatriz(bibliotecaAberta);
+        setGerandoMatriz({prontas: g.prontas, total: g.total, pedidos: g.pedidos});
+      }
+      if (g.erro) throw new Error(g.erro);
+      setRevisao({linhas: paraLinhas(g.cenas ?? []), por: g.por, aviso: g.aviso, pedidos: g.pedidos});
+    } catch (e) {
+      setErrosDeEnvio((x) => ({...x, biblioteca: (e as Error).message}));
+    } finally {
+      setGerandoMatriz(null);
+    }
+  }, [bibliotecaAberta]);
+
+  const revisarMatriz = useCallback(async () => {
+    if (!bibliotecaAberta) return;
+    try {
+      const {cenas} = await api.matrizAtual(bibliotecaAberta);
+      setRevisao({linhas: paraLinhas(cenas), por: '', aviso: '', pedidos: 0});
+    } catch (e) {
+      setErrosDeEnvio((x) => ({...x, biblioteca: (e as Error).message}));
+    }
+  }, [bibliotecaAberta]);
+
+  /** A matriz revisada passa a valer: vai para o servidor como se fosse o cenas.json enviado. */
+  const usarMatriz = useCallback(async (linhas: CenaDaMatriz[]) => {
+    if (!bibliotecaAberta) return;
+    setSalvandoMatriz(true);
+    const arquivo = new File([paraJson(linhas)], 'cenas.json', {type: 'application/json'});
+    if (await enviarMatriz(bibliotecaAberta, arquivo)) setRevisao(null);
+    setSalvandoMatriz(false);
+  }, [bibliotecaAberta, enviarMatriz]);
 
   /** A pasta das cenas: os vídeos dela sobem (três de cada vez) e, se a matriz veio junto,
    *  ela também. Sem matriz na pasta, a página pede a matriz em seguida. */
@@ -322,6 +372,7 @@ export const App: React.FC = () => {
     setTarefa(null);
     setBiblioteca(null);
     setBibliotecaAberta(null);
+    setRevisao(null);
     const clipes = arquivos.filter((f) => CLIPE.test(f.name) && !f.name.startsWith('.'));
     if (!clipes.length) {
       setErrosDeEnvio((e) => ({...e, biblioteca: 'Nenhum vídeo nesta pasta (MP4, MOV, WebM, MKV).'}));
@@ -590,6 +641,10 @@ export const App: React.FC = () => {
           <PassoEnvio modo={modo} setModo={trocarModo} video={unico} fundo={fundo} pessoa={pessoa}
             personagem={personagem} audios={audios} biblioteca={biblioteca}
             faltaMatriz={Boolean(bibliotecaAberta && !biblioteca)} enviandoBiblioteca={enviandoBiblioteca}
+            bibliotecaId={bibliotecaAberta} gerandoMatriz={gerandoMatriz} revisao={revisao}
+            salvandoMatriz={salvandoMatriz} aoGerarMatriz={(a) => void gerarMatriz(a)}
+            aoRevisarMatriz={() => void revisarMatriz()} aoUsarMatriz={(l) => void usarMatriz(l)}
+            aoFecharRevisao={() => setRevisao(null)}
             montagem={montagem} mudarMontagem={mudarMontagem}
             progresso={envios} erro={errosDeEnvio} aoEscolher={escolherArquivo}
             aoEscolherAudios={(a) => void escolherAudios(a)} aoEscolherPasta={(a) => void escolherPasta(a)}

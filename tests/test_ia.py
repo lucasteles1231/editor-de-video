@@ -198,6 +198,17 @@ class TestOPedido:
         segundo = json.loads(gemini.pedidos[1].content)["generationConfig"]
         assert "thinkingConfig" not in segundo
 
+    @pytest.mark.parametrize("resposta", [
+        {"promptFeedback": {"blockReason": "PROHIBITED_CONTENT"}},
+        {"candidates": [{"content": {"parts": []}, "finishReason": "SAFETY"}]},
+    ])
+    def test_a_recusa_pelo_conteudo_nao_desce_a_escada(self, de_verdade, resposta):
+        """Os outros modelos recusariam igual: um pedido só, e o erro diz o motivo."""
+        gemini = _Gemini(httpx.Response(200, json=resposta))
+        with pytest.raises(ia.Bloqueado, match="se recusou"):
+            _sugerir(gemini)
+        assert len(gemini.pedidos) == 1
+
     def test_depois_da_recusa_o_modelo_ja_vai_pensando(self, de_verdade):
         """O pedido seguinte da sessão (o conserto do roteiro, as ideias) não gasta de novo
         a tentativa que o modelo sempre recusa."""

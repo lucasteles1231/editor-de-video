@@ -166,6 +166,13 @@ def argumentos() -> argparse.ArgumentParser:
     p.add_argument("--formatos", action="store_true",
                    help="mostra o que este computador consegue gravar")
     p.add_argument("--presets", action="store_true", help="mostra os presets de edição")
+    g2 = p.add_argument_group("a matriz da biblioteca de cenas")
+    g2.add_argument("--gerar-matriz", type=Path, metavar="PASTA",
+                    help="escreve o cenas.json de uma pasta de clipes: o Gemini descreve cada "
+                         "cena (sem a chave, sai um rascunho para completar)")
+    g2.add_argument("--assunto", metavar="TEXTO", default="",
+                    help='do que são as cenas ("trailers do GTA 6"): ajuda a reconhecer '
+                         "personagens")
     p.add_argument("--versao", action="version", version=f"editor-de-video {__version__}",
                    help="mostra a versão e sai")
     return p
@@ -192,6 +199,41 @@ def _formato_de(caminho: Path | None) -> str | None:
     return ext if ext in saida_mod.FORMATOS else None
 
 
+def _gerar_matriz(pasta: Path, assunto: str) -> int:
+    """O ``cenas.json`` da pasta (ou ``cenas-gerada.json``, se já existe um): para revisar
+    e usar com ``--cenas PASTA --matriz``."""
+    import json
+
+    from editor import catalogo
+
+    if not pasta.is_dir():
+        print(f"não achei a pasta {pasta}", file=sys.stderr)
+        return 2
+    clipes = catalogo.clipes_relativos(pasta)
+    if not clipes:
+        print(f"a pasta {pasta} não tem clipes (MP4, MOV, WebM, MKV)", file=sys.stderr)
+        return 2
+
+    def andou(prontas: int, total: int, pedidos: int) -> None:
+        print(f"\r  descrevendo {prontas} de {total} cenas ({pedidos} pedidos ao Gemini)",
+              end="", flush=True)
+
+    g = catalogo.gerar(clipes, assunto=assunto, progresso=andou)
+    print()
+    destino = pasta / "cenas.json"
+    if destino.exists():
+        destino = pasta / "cenas-gerada.json"
+    destino.write_text(json.dumps(g.cenas, ensure_ascii=False, indent=2) + "\n",
+                       encoding="utf-8")
+    quem = {"gemini": "pelo Gemini", "falsa": "pela IA de teste",
+            "rascunho": "como rascunho (sem o Gemini)"}.get(g.por, "")
+    print(f"{len(g.cenas)} cenas descritas {quem}: {destino}")
+    if g.aviso:
+        print(f"aviso: {g.aviso}")
+    print("Revise as descrições antes de usar: é delas que sai a escolha das cenas.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     _utf8()
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
@@ -214,6 +256,9 @@ def main(argv: list[str] | None = None) -> int:
         for pr in presets.PRESETS.values():
             print(f"{pr.nome:13} {pr.titulo}\n{'':13} {pr.frase}")
         return 0
+
+    if a.gerar_matriz is not None:
+        return _gerar_matriz(a.gerar_matriz, a.assunto)
 
     if a.video is None and a.fundo is None and not (a.pessoa or a.personagem or a.audio
                                                     or a.fala or a.preset or a.cenas):
