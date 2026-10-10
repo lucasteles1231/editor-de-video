@@ -451,7 +451,7 @@ def gravar_tela(exemplo: Path, pasta: Path) -> Path:
     try:
         with sync_playwright() as p:
             nav = p.chromium.launch()
-            ctx = nav.new_context(viewport={"width": 1280, "height": 720},
+            ctx = nav.new_context(bypass_csp=True, viewport={"width": 1280, "height": 720},
                                   record_video_dir=str(pasta / "gravacao"),
                                   record_video_size={"width": 1280, "height": 720})
             ctx.add_init_script("localStorage.setItem('editor-tour-visto', '1')")
@@ -526,7 +526,8 @@ def capturas_da_noticia(nav, url: str, pasta: Path) -> None:
     cenas = biblioteca_de_exemplo(pasta)
     partes = partes_de_narracao(pasta)
     palito = desenhar_palito(pasta / "palito.gif")
-    ctx = nav.new_context(viewport={"width": 1280, "height": 1500}, device_scale_factor=2,
+    ctx = nav.new_context(
+        bypass_csp=True, viewport={"width": 1280, "height": 1500}, device_scale_factor=2,
                           color_scheme="light")
     ctx.add_init_script(SEM_TOUR)
     pagina = ctx.new_page()
@@ -564,7 +565,7 @@ def capturas_da_noticia(nav, url: str, pasta: Path) -> None:
     # O tour, no primeiro passo: os dois jeitos de usar.
     pagina.set_viewport_size({"width": 1280, "height": 800})
     pagina.evaluate("window.scrollTo(0, 0)")
-    pagina.get_by_role("button", name="Tour").click()
+    pagina.get_by_role("button", name="Tour", exact=True).click()
     pagina.locator(".driver-popover-title").get_by_text("Dois jeitos de usar").wait_for()
     pagina.wait_for_timeout(900)
     salvar(pagina.screenshot(), "interface-tour.png")
@@ -606,7 +607,8 @@ def capturas_da_voz(nav, url: str, pasta: Path) -> None:
     voz_clonada.pasta_das_narracoes = lambda: pasta / "narracoes"
     os.environ.update(EDITOR_VOZ="falsa", EDITOR_TRANSCRITOR="falso")
     try:
-        ctx = nav.new_context(viewport={"width": 1280, "height": 1700}, device_scale_factor=2,
+        ctx = nav.new_context(
+            bypass_csp=True, viewport={"width": 1280, "height": 1700}, device_scale_factor=2,
                               color_scheme="light")
         ctx.add_init_script(SEM_TOUR)
         pagina = ctx.new_page()
@@ -652,6 +654,43 @@ def capturas_da_voz(nav, url: str, pasta: Path) -> None:
             os.environ.pop(nome, None)
 
 
+def capturas_dos_presets(nav, url: str, pasta: Path) -> None:
+    """O passo 2 com um preset salvo pela página ("Meu tour de imóvel", a partir do de
+    imóveis), numa pasta de dados temporária: os presets de quem gera as imagens ficam
+    de fora."""
+    from editor import ia
+
+    dados_de_verdade = ia.pasta_de_dados
+    ia.pasta_de_dados = lambda: pasta / "dados-dos-presets"
+    try:
+        ctx = nav.new_context(
+            bypass_csp=True, viewport={"width": 1280, "height": 1400}, device_scale_factor=2,
+                              color_scheme="light")
+        ctx.add_init_script(SEM_TOUR)
+        pagina = ctx.new_page()
+        pagina.goto(url)
+        pagina.add_style_tag(content=".cabecalho { position: static !important; }")
+        grupo = pagina.get_by_role("group", name="presets de edição")
+        grupo.get_by_role("button", name=re.compile("^Divulgação de imóveis")).click()
+        pagina.locator("label.interruptor", has_text="Zoom de ênfase").click()
+        pagina.get_by_role("button", name="Salvar como preset").click()
+        formulario = pagina.get_by_role("form", name="salvar como preset")
+        formulario.get_by_label("Nome do preset").fill("Meu tour de imóvel")
+        formulario.get_by_label("Frase (opcional)").fill("O de imóveis, com um zoom leve.")
+        formulario.get_by_role("button", name="Salvar").click()
+        grupo.get_by_role("button", name=re.compile("^Meu tour de imóvel seu")).wait_for()
+        pagina.wait_for_timeout(400)
+        topo = grupo.bounding_box()
+        fim = pagina.locator(".presets-meus").bounding_box()
+        salvar(pagina.screenshot(clip={"x": topo["x"] - 12, "y": topo["y"] - 12,
+                                       "width": topo["width"] + 24,
+                                       "height": fim["y"] + fim["height"] - topo["y"] + 24}),
+               "interface-presets.png", 1200)
+        ctx.close()
+    finally:
+        ia.pasta_de_dados = dados_de_verdade
+
+
 def capturas(exemplo: Path, pasta: Path, *, ia_de_verdade: bool = False,
              tela: Path | None = None, com_ideias: bool = True) -> None:
     from playwright.sync_api import sync_playwright
@@ -680,7 +719,7 @@ def _capturas(exemplo: Path, pasta: Path, url: str, config_de_verdade, *,
         nav = p.chromium.launch()
         try:
             for tema in ("dark", "light"):
-                ctx = nav.new_context(viewport={"width": 1280, "height": 800},
+                ctx = nav.new_context(bypass_csp=True, viewport={"width": 1280, "height": 800},
                                       device_scale_factor=2, color_scheme=tema)
                 ctx.add_init_script(sem_tour)
                 pagina = ctx.new_page()
@@ -714,7 +753,7 @@ def _capturas(exemplo: Path, pasta: Path, url: str, config_de_verdade, *,
 
             # O passo 1 na montagem: o fundo, o personagem de palito e a narração.
             if tela is not None:
-                ctx = nav.new_context(viewport={"width": 1280, "height": 1400},
+                ctx = nav.new_context(bypass_csp=True, viewport={"width": 1280, "height": 1400},
                                       device_scale_factor=2, color_scheme="light")
                 ctx.add_init_script(sem_tour)
                 pagina = ctx.new_page()
@@ -738,6 +777,7 @@ def _capturas(exemplo: Path, pasta: Path, url: str, config_de_verdade, *,
             # A montagem com a biblioteca de cenas, e o tour.
             capturas_da_noticia(nav, url, pasta)
             capturas_da_voz(nav, url, pasta)
+            capturas_dos_presets(nav, url, pasta)
 
             # A thumbnail com IA: as três ideias e a prévia com as abas.
             if not com_ideias:
@@ -746,7 +786,7 @@ def _capturas(exemplo: Path, pasta: Path, url: str, config_de_verdade, *,
                 chaves.pasta_de_config = config_de_verdade
             else:
                 os.environ["EDITOR_IA"] = "falsa"
-            ctx = nav.new_context(viewport={"width": 1280, "height": 1500},
+            ctx = nav.new_context(bypass_csp=True, viewport={"width": 1280, "height": 1500},
                                   device_scale_factor=2, color_scheme="light")
             ctx.add_init_script(sem_tour)
             pagina = ctx.new_page()
@@ -785,6 +825,7 @@ def so_noticia() -> None:
         try:
             capturas_da_noticia(nav, url, Path(tmp))
             capturas_da_voz(nav, url, Path(tmp))
+            capturas_dos_presets(nav, url, Path(tmp))
         finally:
             nav.close()
 

@@ -149,9 +149,10 @@ sugestões do Gemini, com uma chave grátis sua.
   <tr>
     <td><img src="docs/img/funcoes/presets.svg" width="44" alt=""></td>
     <td><b>Presets.</b> Short de gameplay, de vlog e de review, explicação técnica, humor,
-    motivacional, corte de podcast, aula, divulgação de imóveis e notícia com cenas. Um clique muda o ritmo, os
-    sons, a legenda, a voz, a saída e a thumbnail, e tudo continua editável. Veja
-    <a href="#presets">Presets</a>.</td>
+    motivacional, corte de podcast, aula, divulgação de imóveis e notícia com cenas. Um
+    clique muda o ritmo, os sons, a legenda, a voz, a saída e a thumbnail, e tudo continua
+    editável. O que você ajustar vira um preset seu, que fica só no seu computador e vai
+    para outro num arquivo. Veja <a href="#presets">Presets</a>.</td>
   </tr>
   <tr>
     <td><img src="docs/img/funcoes/thumbnail.svg" width="44" alt=""></td>
@@ -187,7 +188,8 @@ Há dois jeitos, e o tour da página (botão **Tour**, no topo) mostra os dois.
 
 1. Digite `editar`. O navegador abre no editor.
 2. No passo 1, arraste o vídeo e marque onde vai postar.
-3. No passo 2, escolha o preset do tipo de vídeo: vlog, gameplay, review, aula…
+3. No passo 2, escolha o preset do tipo de vídeo: vlog, gameplay, review, aula,
+   imóveis… ou um seu.
 4. Clique em **Editar vídeo**. O vídeo editado, as legendas e as thumbnails ficam na
    pasta mostrada no resultado.
 
@@ -267,7 +269,7 @@ escolher as edições, escolher a saída e, se quiser, a thumbnail.
   recomenda pelo formato do vídeo.
 - **Edições:** comece por um preset e ajuste o que quiser: cada efeito, a janela com
   câmera, os cartões animados, a voz, o bipe, o ritmo, a pausa, o zoom e os sons, com um
-  botão para ouvir cada tema.
+  botão para ouvir cada tema. Do jeito que ficar, **Salvar como preset** guarda um seu.
 - **Legenda:** o idioma da fala, o tamanho do modelo, o estilo (clássico ou destaques), o
   tamanho da letra, quantas letras cabem numa linha e se quer o `.srt` e o `.vtt`.
 - **Saída:** a extensão (MP4, MOV, WebM, MKV ou GIF), o codec, a resolução, os quadros por
@@ -543,6 +545,8 @@ editável, e mexer em qualquer um troca a marca para **Personalizado**.
 
 ### Os seus presets
 
+<img src="docs/img/interface-presets.png" alt="O passo 2 com os presets prontos e, no fim da grade, o preset Meu tour de imóvel com a marca seu e o botão de apagar; embaixo, os links Exportar os seus e Importar" width="420" align="right">
+
 Gostou de um ajuste? Ele vira um preset seu, que aparece junto dos prontos, com a marca
 **seu**.
 
@@ -566,6 +570,8 @@ Gostou de um ajuste? Ele vira um preset seu, que aparece junto dos prontos, com 
 - **No terminal:** `editar --preset gameplay --ritmo 1.3 --salvar-preset "Meu gameplay"`
   salva o preset de partida com as flags por cima. Depois é só usar `--preset
   meu-gameplay`, e o `--presets` lista os prontos e os seus.
+
+<br clear="right">
 
 ## Cartões animados
 
