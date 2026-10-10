@@ -45,9 +45,13 @@ class TestAInstalacao:
         passos = dict(motor_de_voz.comandos())
         assert list(passos) == ["ambiente", "pacotes", "modelo", "teste"]
         assert passos["ambiente"][:4] == ["/bin/uv", "venv", "--python", "3.12"]
-        assert passos["pacotes"][-3:] == ["--torch-backend", "auto", motor_de_voz.PACOTE]
-        assert passos["modelo"][-3:] == ["--baixar", motor_de_voz.MODELO,
+        assert passos["pacotes"][-5:] == ["--torch-backend", "auto", "-c",
+                                          str(motor_de_voz.restricoes()), motor_de_voz.PACOTE]
+        # o modelo e as dependências nas versões testadas
+        assert passos["modelo"][-4:] == ["--baixar", motor_de_voz.MODELO, motor_de_voz.REVISAO,
                                          str(motor_de_voz.pasta_do_modelo())]
+        versoes = motor_de_voz.restricoes().read_text(encoding="utf-8")
+        assert "torch==2.14.1" in versoes and "qwen-tts" not in versoes
         # o script roda isolado (-I) com o Python do ambiente do motor
         assert passos["teste"][:2] == [str(motor_de_voz.python_do_motor()), "-I"]
 
@@ -56,7 +60,8 @@ class TestAInstalacao:
         passos = dict(motor_de_voz.comandos())
         assert passos["ambiente"] == [sys.executable, "-m", "venv",
                                       str(motor_de_voz.pasta() / ".venv")]
-        assert passos["pacotes"][1:4] == ["-m", "pip", "install"]
+        assert passos["pacotes"][1:6] == ["-m", "pip", "install", "-c",
+                                          str(motor_de_voz.restricoes())]
 
     def test_instala_e_registra_a_placa(self, de_verdade, monkeypatch):
         rodados = []

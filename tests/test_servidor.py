@@ -70,6 +70,20 @@ class TestSoQuemAbriu:
     def test_a_pagina_abre_sem_token(self, cliente):
         assert cliente.get("/").status_code == 200
 
+    @pytest.mark.parametrize("caminho", ["/", "/api/estado", "/fontes/Anton-Regular.ttf"])
+    def test_os_cabecalhos_de_seguranca(self, cliente, caminho):
+        r = cliente.get(caminho, headers=CABECA)
+        politica = r.headers["content-security-policy"]
+        assert "script-src 'self'" in politica and "frame-ancestors 'none'" in politica
+        assert "unsafe-eval" not in politica
+        assert r.headers["referrer-policy"] == "no-referrer"
+        assert r.headers["x-content-type-options"] == "nosniff"
+        assert r.headers["x-frame-options"] == "DENY"
+
+    def test_a_recusa_tambem_leva_os_cabecalhos(self, cliente):
+        r = cliente.get("/api/estado")
+        assert r.status_code == 401 and r.headers["x-frame-options"] == "DENY"
+
 
 class TestOFluxo:
     def test_estado(self, cliente):

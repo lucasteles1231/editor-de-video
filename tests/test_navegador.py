@@ -45,6 +45,16 @@ def navegador(request):
         nav.close()
 
 
+#: Anota cada recurso barrado pela CSP do editor (o Firefox nem sempre põe no console).
+VIGIAR_A_CSP = ("window.__barrados = [];"
+                "document.addEventListener('securitypolicyviolation',"
+                " (e) => window.__barrados.push(e.violatedDirective + ' ' + e.blockedURI));")
+
+
+def _barrados(pagina) -> list[str]:
+    return pagina.evaluate("window.__barrados || []")
+
+
 @pytest.fixture
 def endereco(tmp_path):
     import uvicorn
@@ -67,6 +77,7 @@ def test_tour_edicao_e_thumbnail(navegador, endereco, tmp_path):
     erros: list[str] = []
     pagina.on("pageerror", lambda e: erros.append(str(e)))
     pagina.on("console", lambda m: m.type == "error" and erros.append(m.text))
+    pagina.add_init_script(VIGIAR_A_CSP)
     pagina.goto(endereco)
 
     # O tour abre sozinho na primeira visita: os dois jeitos de usar e um passo por área
@@ -226,6 +237,7 @@ def test_montagem_com_personagem_e_narracao(navegador, endereco, tmp_path):
     editado = next(saida.glob("tela-editado.mp4"))
     assert (ler_info(editado)["largura"], ler_info(editado)["altura"]) == (180, 320)
     assert list(saida.glob("*-thumb-1080x1920.png"))
+    assert not _barrados(pagina), _barrados(pagina)
     assert not erros, erros
 
 
@@ -242,6 +254,7 @@ def test_biblioteca_de_cenas(navegador, endereco, tmp_path):
     erros: list[str] = []
     pagina.on("pageerror", lambda e: erros.append(str(e)))
     pagina.on("console", lambda m: m.type == "error" and erros.append(m.text))
+    pagina.add_init_script(VIGIAR_A_CSP)
     pagina.goto(endereco)
 
     pasta = tmp_path / "cenas"
@@ -301,6 +314,7 @@ def test_biblioteca_de_cenas(navegador, endereco, tmp_path):
     expect(pagina.locator(".painel .roteiro")).to_contain_text("Roteiro da IA de teste",
                                                                timeout=180_000)
     assert list((tmp_path / "saida").glob("cenas-editado.mp4"))
+    assert not _barrados(pagina), _barrados(pagina)
     assert not erros, erros
 
 
@@ -315,6 +329,7 @@ def test_minha_voz(navegador, endereco, tmp_path):
     erros: list[str] = []
     pagina.on("pageerror", lambda e: erros.append(str(e)))
     pagina.on("console", lambda m: m.type == "error" and erros.append(m.text))
+    pagina.add_init_script(VIGIAR_A_CSP)
     pagina.goto(endereco)
 
     pagina.get_by_role("button", name="Um fundo e, por cima").click()
@@ -366,6 +381,7 @@ def test_minha_voz(navegador, endereco, tmp_path):
     assert montagem["fala"] == "audio" and len(montagem["audio_ids"]) == 1
     pagina.locator(".miniaturas img").first.wait_for(timeout=120_000)
     assert list((tmp_path / "saida").glob("tela-editado.mp4"))
+    assert not _barrados(pagina), _barrados(pagina)
     assert not erros, erros
 
 

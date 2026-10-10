@@ -507,19 +507,27 @@
   "baixados": {
     "remotion-boom": {
       "url": "https://remotion.media/vine-boom.wav",
-      "reserva": "impactPunch_heavy_000"
+      "sha256": "7f9d09eee38f22ad3dd1396e553d0125d5debdfcd73394c1575b9c60479c106e",
+   "bytes": 221516,
+   "reserva": "impactPunch_heavy_000"
     },
     "remotion-erro-xp": {
       "url": "https://remotion.media/windows-xp-error.wav",
-      "reserva": "error_004"
+      "sha256": "18f07c3b18be82c8d36373f0f58c59f7a73c1e2807f3b1791bdca89718d3f10e",
+   "bytes": 87630,
+   "reserva": "error_004"
     },
     "remotion-disco": {
       "url": "https://remotion.media/record-scratch.wav",
-      "reserva": "scratch_005"
+      "sha256": "8df863375336dcfde11d3dbe50f466f7286567aee64ed6dc0077c18de7f11b71",
+   "bytes": 222786,
+   "reserva": "scratch_005"
     },
     "remotion-ding": {
       "url": "https://remotion.media/ding.wav",
-      "reserva": "confirmation_004"
+      "sha256": "97c823dc8ef1fb6dab5599f5b8b8aee5ec2dfa4c9d987151e64d6c5a5f87adbe",
+   "bytes": 247038,
+   "reserva": "confirmation_004"
     }
   },
   "creditos": {

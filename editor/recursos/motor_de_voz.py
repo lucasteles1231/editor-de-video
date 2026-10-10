@@ -2,7 +2,7 @@
 O motor da voz sintetizada. Roda no ambiente do motor (``<dados>/motor-de-voz/.venv``), e
 não no do editor: só precisa do qwen-tts (que traz o PyTorch) e do numpy.
 
-    python -I motor_de_voz.py --baixar REPO PASTA     o modelo do Hugging Face na PASTA
+    python -I motor_de_voz.py --baixar REPO REVISAO PASTA   o modelo, no commit dado, na PASTA
     python -I motor_de_voz.py --conferir PASTA        carrega o modelo e diz a placa
     python -I motor_de_voz.py PEDIDO.json             gera as frases do pedido
 
@@ -60,14 +60,14 @@ def gravar(caminho: str, amostras, taxa: int) -> None:
         w.writeframes((x * 32767).astype("<i2").tobytes())
 
 
-def baixar(repo: str, destino: str) -> None:
-    """O modelo na pasta do motor. Se ele já está no cache do Hugging Face (de um teste
-    anterior), é copiado de lá, sem baixar de novo."""
+def baixar(repo: str, revisao: str, destino: str) -> None:
+    """O modelo, no commit dado, na pasta do motor. Se ele já está no cache do Hugging Face
+    (de um teste anterior), é copiado de lá, sem baixar de novo."""
     from huggingface_hub import snapshot_download
 
     alvo = Path(destino)
     try:
-        no_cache = Path(snapshot_download(repo, local_files_only=True))
+        no_cache = Path(snapshot_download(repo, revision=revisao, local_files_only=True))
     except Exception:
         no_cache = None
     if no_cache is not None:
@@ -76,7 +76,7 @@ def baixar(repo: str, destino: str) -> None:
         shutil.copytree(no_cache, alvo)              # segue os links do cache
         avisar(modelo=str(alvo), copiado=True)
         return
-    snapshot_download(repo, local_dir=str(alvo))
+    snapshot_download(repo, revision=revisao, local_dir=str(alvo))
     avisar(modelo=str(alvo), copiado=False)
 
 
@@ -108,8 +108,8 @@ def gerar(arquivo: str) -> None:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) == 3 and argv[0] == "--baixar":
-        baixar(argv[1], argv[2])
+    if len(argv) == 4 and argv[0] == "--baixar":
+        baixar(argv[1], argv[2], argv[3])
     elif len(argv) == 2 and argv[0] == "--conferir":
         conferir(argv[1])
     elif len(argv) == 1:

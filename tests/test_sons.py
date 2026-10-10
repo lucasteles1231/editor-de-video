@@ -1,6 +1,7 @@
 """Os efeitos sonoros: o catálogo, os arquivos da Kenney, o nivelamento e a trilha."""
 from __future__ import annotations
 
+import hashlib
 import io
 import wave
 from types import SimpleNamespace
@@ -167,12 +168,25 @@ class TestOTemaDeNoticia:
         finally:
             sons._amostras.cache_clear()
 
+    @staticmethod
+    def _esperado(monkeypatch, nome: str, conteudo: bytes) -> None:
+        """O catálogo passa a esperar este arquivo (o de verdade é o do Remotion)."""
+        monkeypatch.setitem(sons.catalogo()["baixados"][nome], "sha256",
+                            hashlib.sha256(conteudo).hexdigest())
+
+    def test_cada_baixado_tem_o_hash_e_o_tamanho(self):
+        for nome, item in sons.catalogo()["baixados"].items():
+            assert len(item["sha256"]) == 64 and item["url"].startswith("https://"), nome
+            assert 0 < item["bytes"] <= sons.TETO_DO_DOWNLOAD, nome
+
     def test_baixa_uma_vez_inteiro_e_guarda(self, monkeypatch):
         pedidos: list[str] = []
+        conteudo = _wav(1.3)
+        self._esperado(monkeypatch, "remotion-ding", conteudo)
 
         def remotion(pedido: httpx.Request) -> httpx.Response:
             pedidos.append(str(pedido.url))
-            return httpx.Response(200, content=_wav(1.3))
+            return httpx.Response(200, content=conteudo)
 
         monkeypatch.setattr(sons, "_transporte", httpx.MockTransport(remotion))
         sons._amostras.cache_clear()
@@ -188,6 +202,38 @@ class TestOTemaDeNoticia:
             assert len(pedidos) == 1                  # da segunda vez, vem do disco
         finally:
             sons._amostras.cache_clear()
+
+    def test_o_arquivo_trocado_nao_entra(self, monkeypatch):
+        """Um arquivo diferente do anotado (o endereço trocou de dono, ou alguém no meio do
+        caminho) não é guardado nem aberto: toca a reserva."""
+        self._esperado(monkeypatch, "remotion-boom", _wav(0.4))
+        monkeypatch.setattr(sons, "_transporte", httpx.MockTransport(
+            lambda pedido: httpx.Response(200, content=_wav(0.9))))
+        sons._amostras.cache_clear()
+        try:
+            assert np.array_equal(sons.amostras("remotion-boom", TAXA),
+                                  sons.amostras("impactPunch_heavy_000", TAXA))
+            assert not list(sons.pasta_dos_baixados().iterdir())
+        finally:
+            sons._amostras.cache_clear()
+
+    def test_grande_demais_nao_entra(self, monkeypatch):
+        enorme = b"RIFF" + bytes(sons.TETO_DO_DOWNLOAD + 10)
+        self._esperado(monkeypatch, "remotion-boom", enorme)
+        monkeypatch.setattr(sons, "_transporte", httpx.MockTransport(
+            lambda pedido: httpx.Response(200, content=enorme)))
+        assert sons._baixado("remotion-boom") is None
+        assert not list(sons.pasta_dos_baixados().iterdir())
+
+    def test_o_guardado_que_mudou_e_baixado_de_novo(self, monkeypatch):
+        conteudo = _wav(0.6)
+        self._esperado(monkeypatch, "remotion-disco", conteudo)
+        guardado = sons.pasta_dos_baixados() / "remotion-disco.wav"
+        guardado.write_bytes(_wav(0.2))                    # mexido no disco
+        monkeypatch.setattr(sons, "_transporte", httpx.MockTransport(
+            lambda pedido: httpx.Response(200, content=conteudo)))
+        assert sons._baixado("remotion-disco") == guardado
+        assert guardado.read_bytes() == conteudo
 
     def test_sem_som_de_transicao(self):
         from editor import plano

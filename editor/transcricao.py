@@ -30,6 +30,12 @@ logger = logging.getLogger(__name__)
 MODELOS = {"tiny": "75 MB", "base": "145 MB", "small": "464 MB", "medium": "1,5 GB"}
 #: ``small`` é o menor que transcreve português sem tropeçar a cada frase.
 MODELO_PADRAO = "small"
+#: A versão de cada modelo (o commit do repositório da Systran no Hugging Face, conferido
+#: em 10/10/2026): o que se baixa é sempre o que foi testado, e não o que estiver lá no dia.
+REVISOES = {"tiny": "d90ca5fe260221311c53c58e660288d3deb8d356",
+            "base": "ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66",
+            "small": "536b0662742c02347bc0e980a01041f333bce120",
+            "medium": "08e178d48790749d25932bbc082711ddcfdfbc4f"}
 IDIOMA_PADRAO = "pt"
 
 #: A variável que liga o transcritor falso (só testes).
@@ -62,7 +68,7 @@ def modelo_baixado(modelo: str = MODELO_PADRAO) -> bool:
     try:
         from faster_whisper.utils import download_model
 
-        download_model(modelo, local_files_only=True)
+        download_model(modelo, local_files_only=True, revision=REVISOES.get(modelo))
         return True
     except Exception:
         return False
@@ -115,7 +121,8 @@ def transcrever(caminho: Path, *, idioma: str = IDIOMA_PADRAO, modelo: str = MOD
     # pergunta ao Hugging Face por uma versão nova a cada vídeo (e espera a rede cair
     # para desistir, quando não há internet).
     whisper = WhisperModel(modelo, device="cpu", compute_type="int8", cpu_threads=nucleos,
-                           local_files_only=modelo_baixado(modelo))
+                           local_files_only=modelo_baixado(modelo),
+                           revision=REVISOES.get(modelo))
     # O VAD descarta trechos sem fala antes de transcrever: sem ele, música e
     # silêncio viram frases inventadas ("Obrigado por assistir!").
     # A dica vai para o começo de cada janela de 30 s ("hotwords"), e não só da
@@ -322,7 +329,8 @@ def ajustar_ao_texto(palavras: list[Palavra], texto: str) -> list[Palavra]:
             for tok, t in zip(tokens, tempos, strict=True) if t is not None]
 
 
-__all__ = ["CASAMENTO_MINIMO", "IDIOMA_PADRAO", "MODELOS", "MODELO_PADRAO", "VARIAVEL_FALSA",
+__all__ = ["CASAMENTO_MINIMO", "IDIOMA_PADRAO", "MODELOS", "MODELO_PADRAO", "REVISOES",
+           "VARIAVEL_FALSA",
            "Palavra", "ajustar_ao_texto", "carregar", "chaves", "dica_das_palavras",
            "identidade", "modelo_baixado", "por_extenso", "salvar", "texto_ao_lado",
            "transcrever"]

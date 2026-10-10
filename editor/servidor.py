@@ -77,6 +77,20 @@ MATRIZ_MAXIMA = 2 * 1024 * 1024
 PARTES_MAXIMAS = 30
 #: Envios mais velhos que isto são apagados quando a interface abre.
 GUARDAR_ENVIOS_S = 2 * 24 * 3600
+#: Os cabeçalhos de toda resposta. A página não tem script na linha e não carrega nada de
+#: fora: tudo vem do próprio editor (as fotos do Pexels passam por ele). Os estilos na
+#: linha são os do React (``style={...}``); ``blob:`` e ``data:`` são a thumbnail desenhada
+#: no navegador e os áudios gravados. Ninguém põe a página dentro de outra (``frame-
+#: ancestors``), e o endereço, com o token, nunca vai no ``Referer``.
+POLITICA = "; ".join([
+    "default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:", "media-src 'self' data: blob:", "font-src 'self' data:",
+    "connect-src 'self' data: blob:", "worker-src 'self' blob:", "object-src 'none'",
+    "base-uri 'none'", "form-action 'none'", "frame-ancestors 'none'",
+])
+CABECALHOS = {"Content-Security-Policy": POLITICA, "Referrer-Policy": "no-referrer",
+              "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY",
+              "Cross-Origin-Opener-Policy": "same-origin"}
 
 
 def pasta_de_envios() -> Path:
@@ -219,16 +233,21 @@ def criar_app(token: str, *, porta: int, pasta_saida: Path | None = None,
 
     @app.middleware("http")
     async def guarda(request: Request, call_next):
+        resposta = None
         if request.url.path.startswith("/api/"):
-            if request.headers.get("host") not in hosts:
-                return JSONResponse({"erro": "endereço não permitido"}, status_code=403)
-            origem = request.headers.get("origin")
-            if origem and origem not in origens:
-                return JSONResponse({"erro": "origem não permitida"}, status_code=403)
             dado = request.headers.get("x-editor-token") or request.query_params.get("t")
-            if not dado or not secrets.compare_digest(dado, token):
-                return JSONResponse({"erro": "token ausente ou inválido"}, status_code=401)
-        return await call_next(request)
+            origem = request.headers.get("origin")
+            if request.headers.get("host") not in hosts:
+                resposta = JSONResponse({"erro": "endereço não permitido"}, status_code=403)
+            elif origem and origem not in origens:
+                resposta = JSONResponse({"erro": "origem não permitida"}, status_code=403)
+            elif not dado or not secrets.compare_digest(dado, token):
+                resposta = JSONResponse({"erro": "token ausente ou inválido"}, status_code=401)
+        if resposta is None:
+            resposta = await call_next(request)
+        for nome, valor in CABECALHOS.items():
+            resposta.headers.setdefault(nome, valor)
+        return resposta
 
     def _video(vid: str) -> dict:
         if vid not in videos:

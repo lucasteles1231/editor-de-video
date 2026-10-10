@@ -8,10 +8,12 @@ editor, e desinstalar é apagar uma pasta (``<dados>/motor-de-voz``, com o model
 **A instalação** (o botão da página, ou ``editar --instalar-voz``):
 
 1. o ``uv`` cria o ambiente com o Python 3.12 (ele baixa o Python, se faltar);
-2. instala o ``qwen-tts`` na versão testada, e o ``--torch-backend auto`` do uv escolhe o
-   PyTorch com CUDA quando há placa NVIDIA (sem o uv, valem o ``venv`` e o ``pip`` do
-   Python do editor);
-3. o modelo vem do Hugging Face para dentro da pasta (copiado do cache, se já estiver lá);
+2. instala o ``qwen-tts`` e o que ele pede **nas versões testadas**
+   (``recursos/motor-de-voz-versoes.txt``, como restrição), e o ``--torch-backend auto``
+   do uv escolhe o PyTorch com CUDA quando há placa NVIDIA (sem o uv, valem o ``venv`` e
+   o ``pip`` do Python do editor);
+3. o modelo vem do Hugging Face, **no commit testado**, para dentro da pasta (copiado do
+   cache, se já estiver lá);
 4. o motor carrega o modelo uma vez, para conferir, e diz qual placa vai usar.
 
 **A conversa:** o editor escreve um pedido em JSON (a referência, o texto dela e as
@@ -51,6 +53,8 @@ logger = logging.getLogger(__name__)
 
 #: O modelo e a versão do pacote que foram medidos (prova de conceito de 09/10).
 MODELO = "Qwen/Qwen3-TTS-12Hz-0.6B-Base"
+#: O commit do modelo no Hugging Face (conferido em 10/10/2026).
+REVISAO = "5d83992436eae1d760afd27aff78a71d676296fc"
 PACOTE = "qwen-tts==0.1.1"
 PYTHON = "3.12"
 #: O que a página mostra antes de instalar.
@@ -97,6 +101,11 @@ def python_do_motor() -> Path:
 
 def script() -> Path:
     return Path(str(files("editor").joinpath("recursos", "motor_de_voz.py")))
+
+
+def restricoes() -> Path:
+    """As versões testadas de tudo o que o ``qwen-tts`` pede."""
+    return Path(str(files("editor").joinpath("recursos", "motor-de-voz-versoes.txt")))
 
 
 def _marca() -> Path:
@@ -168,17 +177,19 @@ def _uv_escolhe_o_torch(uv: str) -> bool:
 def comandos() -> list[tuple[str, list[str]]]:
     """Os passos da instalação, na ordem: (etapa, comando)."""
     venv, py, s = pasta() / ".venv", str(python_do_motor()), str(script())
+    versoes = ["-c", str(restricoes())]
     uv = achar_uv()
     if uv:
         pacotes = [uv, "pip", "install", "--python", py]
         if _uv_escolhe_o_torch(uv):
             pacotes += ["--torch-backend", "auto"]
         passos = [("ambiente", [uv, "venv", "--python", PYTHON, "--allow-existing", str(venv)]),
-                  ("pacotes", [*pacotes, PACOTE])]
+                  ("pacotes", [*pacotes, *versoes, PACOTE])]
     else:
         passos = [("ambiente", [sys.executable, "-m", "venv", str(venv)]),
-                  ("pacotes", [py, "-m", "pip", "install", PACOTE])]
-    return [*passos, ("modelo", [py, "-I", s, "--baixar", MODELO, str(pasta_do_modelo())]),
+                  ("pacotes", [py, "-m", "pip", "install", *versoes, PACOTE])]
+    return [*passos,
+            ("modelo", [py, "-I", s, "--baixar", MODELO, REVISAO, str(pasta_do_modelo())]),
             ("teste", [py, "-I", s, "--conferir", str(pasta_do_modelo())])]
 
 
@@ -252,7 +263,8 @@ def _executar(progresso: Callable[[str, float, str], None] | None) -> dict:
                 ultimas = " | ".join(list(i.linhas)[-3:])
                 raise ErroDoMotor(f"{nome} falhou (código {codigo}): {ultimas}")
             i.fracao = b
-        registro = {"modelo": MODELO, "pacote": PACOTE, "quando": time.strftime("%Y-%m-%d"),
+        registro = {"modelo": MODELO, "revisao": REVISAO, "pacote": PACOTE,
+                    "quando": time.strftime("%Y-%m-%d"),
                     "aparelho": resposta.get("aparelho", ""), "torch": resposta.get("torch", ""),
                     "qwen_tts": resposta.get("qwen_tts", "")}
         _marca().write_text(json.dumps(registro, ensure_ascii=False, indent=1),

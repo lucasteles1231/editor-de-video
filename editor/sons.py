@@ -21,7 +21,9 @@ usou.
 Dos sete do Remotion, três são CC0 e vão junto. Os outros quatro (o "vine boom", o erro
 do Windows XP, o disco arranhado e o ding) não têm licença livre: o editor baixa do
 endereço do Remotion na primeira vez que o tema toca, guarda na pasta de dados e, sem
-internet, toca um parecido da Kenney.
+internet, toca um parecido da Kenney. Cada um é conferido pelo SHA-256 anotado no
+catálogo (o arquivo baixado vai para o FFmpeg): o que vier diferente, ou maior que o teto,
+não é usado, e toca a reserva.
 """
 from __future__ import annotations
 
@@ -65,6 +67,8 @@ SOME_S = 0.03
 TETO_CRU_S = 2.0
 #: Quanto esperar por um som baixado antes de tocar a reserva dele.
 ESPERA_DO_DOWNLOAD_S = 10.0
+#: O maior som que se baixa (os quatro têm de 86 a 247 KB).
+TETO_DO_DOWNLOAD = 2 * 1024 * 1024
 #: O transporte do httpx para baixar (os testes trocam por um falso, sem rede).
 _transporte = None
 
@@ -163,26 +167,46 @@ def pasta_dos_baixados() -> Path:
     return Path(user_data_dir("editor-de-video", appauthor=False)) / "sons"
 
 
+def _confere(dados: bytes, esperado: str) -> bool:
+    import hashlib
+
+    return hashlib.sha256(dados).hexdigest() == esperado
+
+
 def _baixado(nome: str) -> Path | None:
     """O arquivo de um som que não vai junto: baixado do endereço do catálogo na primeira
-    vez e guardado. Sem internet (ou com o endereço fora do ar), ``None``."""
+    vez, conferido pelo SHA-256 do catálogo e guardado. Sem internet, com o endereço fora
+    do ar ou com um arquivo que não é o esperado, ``None`` (e toca a reserva)."""
+    item = catalogo()["baixados"][nome]
     destino = pasta_dos_baixados() / f"{nome}.wav"
-    if destino.is_file() and destino.stat().st_size > 0:
-        return destino
-    url = catalogo()["baixados"][nome]["url"]
+    if destino.is_file():
+        if _confere(destino.read_bytes(), item["sha256"]):
+            return destino
+        logger.warning("o som guardado %s mudou no disco: baixando de novo", nome)
+        destino.unlink(missing_ok=True)
     try:
         import httpx
 
+        dados = bytearray()
         with httpx.Client(timeout=ESPERA_DO_DOWNLOAD_S, transport=_transporte,
-                          follow_redirects=True) as cliente:
-            r = cliente.get(url)
+                          follow_redirects=True) as cliente, \
+                cliente.stream("GET", item["url"]) as r:
             r.raise_for_status()
+            for pedaco in r.iter_bytes():
+                dados += pedaco
+                if len(dados) > TETO_DO_DOWNLOAD:
+                    raise ValueError(f"passou de {TETO_DO_DOWNLOAD} bytes")
+        if not _confere(bytes(dados), item["sha256"]):
+            raise ValueError("o arquivo não é o esperado (o SHA-256 não bate)")
         destino.parent.mkdir(parents=True, exist_ok=True)
         parcial = destino.with_suffix(".parcial")
-        parcial.write_bytes(r.content)
+        parcial.write_bytes(dados)
         parcial.replace(destino)
-        logger.info("som baixado: %s (%d bytes)", url, len(r.content))
+        logger.info("som baixado: %s (%d bytes)", item["url"], len(dados))
         return destino
+    except ValueError as erro:         # o arquivo trocado ou grande demais: a reserva toca
+        logger.warning("o som %s foi recusado (%s); toca a reserva", nome, erro)
+        return None
     except Exception as erro:          # sem rede, fora do ar, disco cheio: a reserva toca
         logger.info("o som %s não veio (%s); toca a reserva", nome, erro)
         return None

@@ -6,6 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Só leitura: os testes não escrevem nada no repositório.
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

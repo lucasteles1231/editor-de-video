@@ -7,6 +7,10 @@ name: modelos de verdade
 # - o MODNet (o recorte da pessoa) carrega no onnxruntime e roda num quadro.
 on: workflow_dispatch
 
+# Só leitura: os testes não escrevem nada no repositório.
+permissions:
+  contents: read
+
 jobs:
   modelos:
     name: modelos (${{ matrix.os }})
