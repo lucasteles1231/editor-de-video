@@ -127,6 +127,17 @@ PRESETS: dict[str, Preset] = {p.nome: p for p in (
             tema_dos_sons="tecnico", volume_dos_sons=0.6, tamanho_legenda=0.9,
             caracteres_por_linha=36, mover=False, janela=True, animacoes=True, voz="limpa",
             thumb=("classico", "ciano")),
+    # O tour do imóvel (medido em 10/10 em dois reels de uma imobiliária, de 90 e 98 s): tomadas
+    # longas de gimbal, quase sem corte, pouca narração (34 e 96 palavras) e nenhum efeito.
+    # Cortar as pausas picotaria o tour; a voz gravada no imóvel vazio ecoa.
+    _preset("imoveis", "Divulgação de imóveis",
+            "Tour pelo imóvel: a tomada inteira, sem efeitos, a voz sem o eco dos cômodos e o "
+            "preço e a metragem em cartões.",
+            cortes=False, zoom=False, adesivos=False, icones=False, sons=False, mover=False,
+            pausa_maxima=0.80, ritmo=0.5, empurrao=0.0, respiro=0.25, tema_dos_sons="suave",
+            volume_dos_sons=0.6, sons_por_palavra=False, tamanho_legenda=0.9,
+            caracteres_por_linha=22, animacoes=True, voz="limpa",
+            thumb=("numero", "amarelo")),
 )}
 
 

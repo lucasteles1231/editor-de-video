@@ -79,6 +79,12 @@ class TestNoTerminal:
             "gameplay", 1.5, True, 14)
         assert v["saida"].fps == "60"
 
+    def test_o_tour_do_imovel_fica_inteiro(self, pedido):
+        """O vídeo de imóvel é quase todo sem fala: cortar as pausas picotaria o tour."""
+        e = pedido("--preset", "imoveis")["edicao"]
+        assert e.cortes is False and e.zoom is False and e.sons is False
+        assert (e.adesivos, e.icones, e.voz, e.animacoes) == (False, False, "limpa", True)
+
     def test_a_flag_ganha_do_preset(self, pedido):
         v = pedido("--preset", "gameplay", "--ritmo", "1.2", "--fps", "30",
                    "--sem-som-nos-cortes", "--sem-zoom", "--idioma", "en")
