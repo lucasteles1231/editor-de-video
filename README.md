@@ -525,7 +525,7 @@ editável, e mexer em qualquer um troca a marca para **Personalizado**.
 | **Motivacional** | frases de impacto | legenda grande, de 14 letras, e sons épicos |
 | **Corte de podcast** | conversa que respira | pausa de 0,80 s, respiro de 0,25 s, ritmo 0,6×, quase nenhum som e a pessoa parada |
 | **Aula ou tutorial longo** | vídeo longo | ritmo 0,5×, legenda de 36 letras, poucos efeitos e a pessoa parada |
-| **Notícia com cenas** | narração sobre um assunto com muitas imagens | janela e câmera, cartões animados, legenda em destaques, voz de estúdio, uma lista de bipe de exemplo, pausa de 0,35 s, ritmo 1,2× e sons de videogame |
+| **Notícia com cenas** | narração sobre um assunto com muitas imagens | janela e câmera, cartões animados, legenda em destaques, voz de estúdio, uma lista de bipe de exemplo, pausa de 0,35 s, ritmo 1,2× e os sons do tema Notícia |
 
 - **O formato** (em pé ou deitado) não é do preset: vem da plataforma escolhida no passo
   1. O preset muda o estilo, e o modelo e a cor da thumbnail.
@@ -536,6 +536,32 @@ editável, e mexer em qualquer um troca a marca para **Personalizado**.
   explicação técnica, humor, motivacional e aula também ligam os cartões animados. A
   janela fica ligada em todos, mas só aparece na montagem.
 - **No terminal,** é `--preset gameplay`. Veja [No terminal](#no-terminal).
+
+### Os seus presets
+
+Gostou de um ajuste? Ele vira um preset seu, que aparece junto dos prontos, com a marca
+**seu**.
+
+1. Escolha um preset e mude o que quiser: a marca vai para **Personalizado**.
+2. Clique em **Salvar como preset**, dê um nome e, se quiser, uma frase.
+3. Pronto: o cartão novo fica no passo 2, inclusive depois de fechar e abrir o editor.
+
+- **O que ele guarda:** o mesmo que os prontos, ou seja, as edições, a saída e o modelo e
+  a cor da thumbnail.
+- **Onde fica:** só no seu computador, no `presets.json` da pasta de dados do seu usuário
+  (veja [O que é instalado, e onde](#instalação-em-detalhe)). Outra conta do mesmo
+  computador não vê.
+- **Para mudar:** ajuste e salve com o mesmo nome. O editor pergunta antes de substituir.
+- **Para apagar:** o **×** do cartão.
+- **Para levar a outro computador:** **Exportar os seus** baixa o `meus-presets.json`, e
+  **Importar**, no outro computador, junta esses presets aos de lá (o mesmo nome
+  substitui).
+- **As conferências:** cada valor passa pelas mesmas conferências da edição, inclusive o
+  que vem de um arquivo importado. O nome de um preset pronto não pode ser usado, e
+  cabem até 50.
+- **No terminal:** `editar --preset gameplay --ritmo 1.3 --salvar-preset "Meu gameplay"`
+  salva o preset de partida com as flags por cima. Depois é só usar `--preset
+  meu-gameplay`, e o `--presets` lista os prontos e os seus.
 
 ## Cartões animados
 
@@ -839,6 +865,7 @@ sua. As medidas são de um MacBook com Apple M5 (10 núcleos, 16 GB).
 | O modelo do recorte (MODNet), na primeira vez que a pessoa é recortada | 26 MB | a mesma pasta do Hugging Face |
 | A voz sintetizada (Minha voz), só se você instalar: o ambiente e o modelo | ~3,5 GB | `motor-de-voz`, na pasta de dados: `%LOCALAPPDATA%\editor-de-video` (Windows) ou `~/Library/Application Support/editor-de-video` (macOS) |
 | As vozes gravadas: a leitura e a referência de cada uma | ~15 MB cada | `vozes`, na mesma pasta de dados |
+| Os seus presets | poucos KB | `presets.json`, na mesma pasta de dados |
 | As chaves do Gemini e do Pexels, se você colar | — | `config.json`, em `%LOCALAPPDATA%\editor-de-video` (Windows) ou `~/Library/Application Support/editor-de-video` (macOS) |
 | Os vídeos editados e as thumbnails | — | `editor-de-video`, dentro da pasta **Vídeos** (Windows) ou **Filmes** (macOS) |
 
@@ -905,6 +932,8 @@ editar video.mp4 --previa 15                      # só os primeiros 15 s, para 
 editar video.mp4 --formato webm --resolucao 720p  # WebM (VP9) em 720p
 editar jogo.mp4 --preset gameplay                 # o preset de gameplay (veja --presets)
 editar jogo.mp4 --preset gameplay --ritmo 1.2     # o preset, com o ritmo um pouco menor
+editar --preset vlog --ritmo 0.9 --salvar-preset "Meu vlog"   # um preset seu
+editar video.mp4 --preset meu-vlog                # e usá-lo
 editar video.mp4 --tema-dos-sons humor --som-nos-cortes
 editar video.mp4 --sem-zoom --sem-sons            # sem zoom e sem efeitos sonoros
 editar eu.mp4 --fundo tela.mp4 --quadro vertical  # você por cima da tela gravada, em pé
@@ -930,8 +959,10 @@ editar --formatos                                 # o que este computador grava
 | Opção | O que faz | Padrão |
 |---|---|---|
 | `-o`, `--saida` | onde gravar | `<nome>-editado.<ext>` |
-| `--preset` | o ponto de partida: `padrao`, `gameplay`, `vlog`, `review`, `tecnico`, `humor`, `motivacional`, `podcast`, `aula` ou `noticia` | `padrao` |
-| `--presets` | mostra os presets | |
+| `--preset` | o ponto de partida: `padrao`, `gameplay`, `vlog`, `review`, `tecnico`, `humor`, `motivacional`, `podcast`, `aula`, `noticia` ou um seu | `padrao` |
+| `--presets` | mostra os presets, os prontos e os seus | |
+| `--salvar-preset NOME` | salva como um preset seu o `--preset` de partida com as flags de edição e de saída por cima (o mesmo nome substitui) | |
+| `--frase TEXTO` | com `--salvar-preset`: a frase que descreve o preset | |
 | `--sem-cortes` | não corta os silêncios | |
 | `--sem-zoom` | sem zoom de ênfase | |
 | `--sem-adesivos` | sem palavras que saltam | |

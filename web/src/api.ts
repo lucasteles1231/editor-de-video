@@ -4,7 +4,8 @@
  */
 import type {
   AudioInfo, BibliotecaInfo, Edicao, Estado, EstadoChave, EstadoIa, FotoPexels, GeracaoDaMatriz, GravacaoDaVoz, Ideia,
-  ImagemFundo, MotorDeVoz, Narracao, PersonagemInfo, RecorteInfo, Saida, Tarefa, VideoInfo, VozSalva,
+  ImagemFundo, MotorDeVoz, Narracao, PersonagemInfo, Preset, PresetsImportados, RecorteInfo, Saida, Tarefa,
+  VideoInfo, VozSalva,
 } from './tipos';
 
 const CHAVE = 'editor-token';
@@ -210,6 +211,18 @@ export const api = {
       body: JSON.stringify({cena, proporcao, lado}),
     }),
   maoUrl: (estilo: string, tom: string) => `/maos/mao-${estilo}-${tom}.${estilo === '3d' ? 'png' : 'svg'}`,
+
+  // ── os presets de quem usa ──
+  /** Salva o que está na tela como um preset seu (``substituir``: o mesmo nome por cima). */
+  salvarPreset: (preset: Omit<Preset, 'nome' | 'meu'>, substituir: boolean) =>
+    pedir<{salvo: string; presets: Preset[]}>('/api/presets', {
+      method: 'POST', headers: JSON_, body: JSON.stringify({...preset, substituir}),
+    }),
+  apagarPreset: (nome: string) => pedir<{presets: Preset[]}>(`/api/presets/${encodeURIComponent(nome)}`,
+    {method: 'DELETE'}),
+  exportarPresetsUrl: () => comToken('/api/presets/exportar'),
+  importarPresets: (arquivo: File) =>
+    enviarArquivo<PresetsImportados>('/api/presets/importar', arquivo, () => undefined),
 
   // ── "Minha voz": o motor, a leitura, as vozes salvas e a narração ──
   vozes: () => pedir<{motor: MotorDeVoz; vozes: VozSalva[]}>('/api/vozes'),

@@ -420,6 +420,84 @@ def test_minha_voz_pelo_microfone(navegador, endereco):
         nav.close()
 
 
+def test_os_meus_presets(navegador, endereco, tmp_path):
+    """Um preset seu: sai do "Personalizado", fica depois de recarregar a página, volta os
+    valores quando escolhido, substitui pelo mesmo nome, entra por um arquivo importado e
+    sai pelo ×."""
+    import json
+
+    from editor import presets
+
+    pagina = navegador.new_page(viewport={"width": 1366, "height": 900})
+    pagina.add_init_script("localStorage.setItem('editor-tour-visto', '1')")
+    pagina.add_init_script(VIGIAR_A_CSP)
+    erros: list[str] = []
+    pagina.on("pageerror", lambda e: erros.append(str(e)))
+    pagina.on("console", lambda m: m.type == "error" and erros.append(m.text))
+    pagina.on("dialog", lambda d: d.accept())
+    pagina.goto(endereco)
+
+    grupo = pagina.get_by_role("group", name="presets de edição")
+    grupo.get_by_role("button", name=re.compile("^Short de gameplay")).click()
+    zoom = pagina.locator("label.interruptor", has_text="Zoom de ênfase")
+    zoom.click()                                         # muda um valor: vira "Personalizado"
+    expect(zoom.locator("input")).not_to_be_checked()
+    pagina.get_by_role("button", name="Salvar como preset").click()
+    formulario = pagina.get_by_role("form", name="salvar como preset")
+    formulario.get_by_label("Nome do preset").fill("Meu gameplay")
+    formulario.get_by_label("Frase (opcional)").fill("Sem zoom, o resto do gameplay")
+    formulario.get_by_role("button", name="Salvar").click()
+    meu = grupo.get_by_role("button", name=re.compile("^Meu gameplay seu"))
+    expect(meu).to_have_attribute("aria-pressed", "true")
+    expect(formulario).to_have_count(0)
+
+    # fica depois de recarregar, e volta os valores dele
+    pagina.reload()
+    grupo.get_by_role("button", name=re.compile("^Padrão")).click()
+    expect(zoom.locator("input")).to_be_checked()
+    meu.click()
+    expect(zoom.locator("input")).not_to_be_checked()
+    expect(meu).to_have_attribute("aria-pressed", "true")
+
+    # o mesmo nome pede para substituir
+    pagina.locator("label.interruptor", has_text="Cortar silêncios").click()
+    pagina.get_by_role("button", name="Salvar como preset").click()
+    formulario.get_by_label("Nome do preset").fill("Meu gameplay")
+    formulario.get_by_role("button", name="Salvar").click()
+    expect(formulario).to_contain_text("Já existe um preset seu com esse nome")
+    formulario.get_by_role("button", name="Substituir").click()
+    expect(meu).to_have_attribute("aria-pressed", "true")
+    assert presets.todos()["meu-gameplay"].edicao["cortes"] is False
+
+    # o nome de um preset pronto é recusado na hora, sem ir ao servidor
+    pagina.locator("label.interruptor", has_text="Cortar silêncios").click()
+    pagina.get_by_role("button", name="Salvar como preset").click()
+    formulario.get_by_label("Nome do preset").fill("Humor")
+    formulario.get_by_role("button", name="Salvar").click()
+    expect(formulario).to_contain_text("é o nome de um preset pronto")
+    formulario.get_by_role("button", name="Cancelar").click()
+
+    # um arquivo exportado de outro computador entra pelo "Importar"
+    expect(pagina.get_by_role("link", name="Exportar os seus")).to_have_attribute(
+        "href", re.compile("/api/presets/exportar"))
+    outro = {**presets.exportar(), "presets": [{
+        "titulo": "Aula calma", "frase": "",
+        "edicao": {**presets.PRESETS["aula"].edicao, "ritmo": 0.6},
+        "saida": presets.PRESETS["aula"].saida, "thumb": presets.PRESETS["aula"].thumb}]}
+    arquivo = tmp_path / "presets-do-outro.json"
+    arquivo.write_text(json.dumps(outro), encoding="utf-8")
+    pagina.get_by_label("importar presets").set_input_files(str(arquivo))
+    expect(pagina.get_by_role("status")).to_contain_text("Entraram: Aula calma")
+    expect(grupo.get_by_role("button", name=re.compile("^Aula calma seu"))).to_be_visible()
+
+    # e sai pelo ×
+    pagina.get_by_role("button", name="apagar o preset Meu gameplay").click()
+    expect(meu).to_have_count(0)
+    assert "meu-gameplay" not in presets.todos()
+    assert not _barrados(pagina), _barrados(pagina)
+    assert not erros, erros
+
+
 def test_gerar_e_revisar_a_matriz(navegador, endereco, tmp_path):
     """Uma pasta sem matriz: o Gemini (aqui, a IA de teste) descreve as cenas, a tabela
     mostra cada uma com a miniatura, a pessoa corrige uma descrição e usa a matriz."""

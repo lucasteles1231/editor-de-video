@@ -5,7 +5,8 @@ O comando ``editar``.
     editar video.mp4             edita direto no terminal
     editar video.mp4 --formato webm --resolucao 720p --sem-cortes
     editar video.mp4 --preset gameplay --ritmo 1.2
-    editar --presets             os presets de edição
+    editar --presets             os presets de edição (os prontos e os seus)
+    editar --preset gameplay --ritmo 1.3 --salvar-preset "Meu gameplay"
     editar --formatos            o que este computador consegue gravar
 
 As flags de edição e de saída começam vazias: sem elas vale o preset (o padrão, se nenhum
@@ -59,8 +60,9 @@ def argumentos() -> argparse.ArgumentParser:
     p.add_argument("video", nargs="?", type=Path, help="o vídeo a editar")
     p.add_argument("-o", "--saida", type=Path, help="onde gravar (padrão: <nome>-editado.<ext>)")
     g = p.add_argument_group("edição")
-    g.add_argument("--preset", choices=list(presets.PRESETS),
-                   help="o ponto de partida (veja --presets); as outras flags ganham dele")
+    g.add_argument("--preset", choices=list(presets.todos()),
+                   help="o ponto de partida, um pronto ou um seu (veja --presets); as outras "
+                        "flags ganham dele")
     g.add_argument("--sem-cortes", dest="cortes", action="store_const", const=False,
                    help="não corta os silêncios")
     g.add_argument("--sem-zoom", dest="zoom", action="store_const", const=False,
@@ -165,7 +167,13 @@ def argumentos() -> argparse.ArgumentParser:
     i.add_argument("--sem-navegador", action="store_true", help="não abre o navegador")
     p.add_argument("--formatos", action="store_true",
                    help="mostra o que este computador consegue gravar")
-    p.add_argument("--presets", action="store_true", help="mostra os presets de edição")
+    p.add_argument("--presets", action="store_true",
+                   help="mostra os presets de edição, os prontos e os seus")
+    p.add_argument("--salvar-preset", metavar="NOME",
+                   help="salva como um preset seu o --preset de partida com as flags de edição "
+                        "e de saída por cima (o mesmo nome substitui)")
+    p.add_argument("--frase", metavar="TEXTO", default="",
+                   help="com --salvar-preset: a frase que descreve o preset")
     g2 = p.add_argument_group("a matriz da biblioteca de cenas")
     g2.add_argument("--gerar-matriz", type=Path, metavar="PASTA",
                     help="escreve o cenas.json de uma pasta de clipes: o Gemini descreve cada "
@@ -326,6 +334,24 @@ def _narrar(nome: str, roteiro: Path | None, pronuncia: str | None, destino: Pat
     return n.caminho, ""
 
 
+def _salvar_preset(a: argparse.Namespace) -> int:
+    """Um preset seu: o de partida (``--preset``, ou o padrão) com as flags por cima."""
+    base = presets.todos()[a.preset or "padrao"]
+    edicao = base.opcoes(**{k: getattr(a, k) for k in presets.EDICAO if getattr(a, k) is not None})
+    dados = {"titulo": a.salvar_preset, "frase": a.frase,
+             "edicao": {k: getattr(edicao, k) for k in presets.EDICAO},
+             "saida": {k: getattr(a, k) or base.saida[k] for k in presets.SAIDA},
+             "thumb": dict(base.thumb)}
+    try:
+        p = presets.salvar(dados, substituir=True)
+    except presets.PresetInvalido as erro:
+        print(f"erro: {erro}", file=sys.stderr)
+        return 2
+    print(f"preset salvo: {p.titulo}. Use com --preset {p.nome} (e na página, no passo 2). "
+          f"Ele fica em {presets.arquivo_dos_meus()}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     _utf8()
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
@@ -345,9 +371,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if a.presets:
-        for pr in presets.PRESETS.values():
-            print(f"{pr.nome:13} {pr.titulo}\n{'':13} {pr.frase}")
+        for pr in presets.todos().values():
+            print(f"{pr.nome:13} {pr.titulo}{'  (seu)' if pr.meu else ''}\n{'':13} {pr.frase}")
         return 0
+
+    if a.salvar_preset is not None:
+        return _salvar_preset(a)
 
     if a.gerar_matriz is not None:
         return _gerar_matriz(a.gerar_matriz, a.assunto)
@@ -385,7 +414,7 @@ def main(argv: list[str] | None = None) -> int:
 
         return abrir(porta=a.porta, navegador=not a.sem_navegador)
 
-    preset = presets.PRESETS[a.preset or "padrao"]
+    preset = presets.todos()[a.preset or "padrao"]
     montagem, erro = _montagem(a)
     if erro:
         print(erro, file=sys.stderr)

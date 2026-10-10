@@ -5,10 +5,11 @@ import React, {useRef, useState} from 'react';
 import {api} from '../api';
 import {falaEfetiva, opcoesDeFala, semSom} from '../fala';
 import {ORDEM, PLATAFORMAS, type Plataforma, juntar} from '../plataformas';
+import {apelido} from '../presets';
 import {bytes, duracao, numero} from '../formatar';
 import type {
   AudioInfo, BibliotecaInfo, CenaDaMatriz, Edicao, EstiloDaLegenda, Estado, Fala, FonteDoFundo, FormatoDoQuadro,
-  Modo, MontagemConfig, PersonagemInfo, PorCima, Preset, Saida, VideoInfo, Voz,
+  Modo, MontagemConfig, PersonagemInfo, PorCima, Preset, PresetsImportados, Saida, VideoInfo, Voz,
 } from '../tipos';
 import {Interruptor} from './Interruptor';
 import {MinhaVoz} from './MinhaVoz';
@@ -487,11 +488,49 @@ export const PassoEdicoes: React.FC<{
   /** O preset que bate com a tela; ``null`` é "Personalizado". */
   marcado: string | null;
   aoEscolherPreset: (p: Preset) => void;
+  /** Os presets de quem usa: salvar o que está na tela, apagar e importar. */
+  aoSalvarPreset: (titulo: string, frase: string, substituir: boolean) => Promise<void>;
+  aoApagarPreset: (p: Preset) => Promise<void>;
+  aoImportarPresets: (arquivo: File) => Promise<PresetsImportados>;
   temas: Record<string, string>;
   /** Na montagem, a janela com a câmera vale. */
   naMontagem: boolean;
-}> = ({edicao, mudar, porCima, presets, marcado, aoEscolherPreset, temas, naMontagem}) => {
+}> = ({edicao, mudar, porCima, presets, marcado, aoEscolherPreset, aoSalvarPreset, aoApagarPreset,
+  aoImportarPresets, temas, naMontagem}) => {
   const tocando = useRef<HTMLAudioElement | null>(null);
+  const [salvando, setSalvando] = useState<{titulo: string; frase: string; conflito: boolean; erro: string} | null>(
+    null);
+  const [importado, setImportado] = useState<{texto: string; erro: boolean} | null>(null);
+  const salvar = async (substituir: boolean) => {
+    if (!salvando) return;
+    // O que a página já sabe, ela diz na hora (o servidor confere de novo).
+    const nome = apelido(salvando.titulo);
+    if (presets.some((p) => !p.meu && (p.nome === nome || apelido(p.titulo) === nome))) {
+      setSalvando({...salvando, erro: `“${salvando.titulo.trim()}” é o nome de um preset pronto: escolha outro.`});
+      return;
+    }
+    if (!substituir && presets.some((p) => p.meu && p.nome === nome)) {
+      setSalvando({...salvando, conflito: true, erro: ''});
+      return;
+    }
+    try {
+      await aoSalvarPreset(salvando.titulo, salvando.frase, substituir);
+      setSalvando(null);
+    } catch (e) {
+      const mensagem = (e as Error).message;
+      setSalvando({...salvando, conflito: mensagem.startsWith('Já existe'), erro: mensagem.startsWith('Já existe') ? '' : mensagem});
+    }
+  };
+  const importar = async (arquivo: File) => {
+    try {
+      const r = await aoImportarPresets(arquivo);
+      const partes = [r.entraram.length ? `Entraram: ${r.entraram.join(', ')}.` : 'Nenhum preset entrou.'];
+      if (r.recusados.length) partes.push(`Ficaram de fora: ${r.recusados.join('; ')}.`);
+      setImportado({texto: partes.join(' '), erro: !r.entraram.length});
+    } catch (e) {
+      setImportado({texto: (e as Error).message, erro: true});
+    }
+  };
   const ouvir = () => {
     tocando.current?.pause();
     const som = new Audio(api.somDoTemaUrl(edicao.tema_dos_sons, edicao.volume_dos_sons));
@@ -503,19 +542,87 @@ export const PassoEdicoes: React.FC<{
       <Cabeca n={2} titulo="Escolha as edições"
         texto="Comece por um preset e ajuste o que quiser. Tudo é decidido por regras, no seu computador; só os cartões animados, as cenas da biblioteca e os destaques da legenda pedem o Gemini." />
       <div className="presets" role="group" aria-label="presets de edição">
-        {presets.map((p) => (
+        {presets.map((p) => (p.meu ? (
+          <div key={p.nome} className="preset-meu">
+            <button type="button" className="preset meu" aria-pressed={marcado === p.nome}
+              onClick={() => aoEscolherPreset(p)}>
+              <strong>{p.titulo} <span className="selo-meu">seu</span></strong>
+              <small>{p.frase}</small>
+            </button>
+            <button type="button" className="apagar-preset" aria-label={`apagar o preset ${p.titulo}`}
+              title="Apagar este preset"
+              onClick={() => aoApagarPreset(p).catch((e: Error) => setImportado({texto: e.message, erro: true}))}>
+              ×
+            </button>
+          </div>
+        ) : (
           <button key={p.nome} type="button" className="preset" aria-pressed={marcado === p.nome}
             onClick={() => aoEscolherPreset(p)}>
             <strong>{p.titulo}</strong>
             <small>{p.frase}</small>
           </button>
-        ))}
+        )))}
         <div className={`preset personalizado${marcado === null ? ' marcado' : ''}`}
           aria-current={marcado === null ? 'true' : undefined}>
           <strong>Personalizado</strong>
           <small>Vira este quando você muda algum valor de um preset.</small>
+          {marcado === null ? (
+            <button type="button" className="botao pequeno salvar-preset" disabled={salvando !== null}
+              onClick={() => setSalvando({titulo: '', frase: '', conflito: false, erro: ''})}>
+              Salvar como preset
+            </button>
+          ) : null}
         </div>
       </div>
+      {salvando ? (
+        <form className="novo-preset" aria-label="salvar como preset" onSubmit={(e) => {
+          e.preventDefault();
+          void salvar(false);
+        }}>
+          <label className="campo">
+            <span>Nome do preset</span>
+            <input type="text" value={salvando.titulo} maxLength={40} autoFocus placeholder="Meu vlog"
+              onChange={(e) => setSalvando({...salvando, titulo: e.target.value, conflito: false, erro: ''})} />
+          </label>
+          <label className="campo">
+            <span>Frase (opcional)</span>
+            <input type="text" value={salvando.frase} maxLength={160} placeholder="Para que tipo de vídeo ele serve"
+              onChange={(e) => setSalvando({...salvando, frase: e.target.value})} />
+          </label>
+          <small>
+            Ele guarda as edições, a saída e o modelo e a cor da thumbnail que estão na tela, e fica só neste
+            computador, na pasta do seu usuário.
+          </small>
+          {salvando.conflito ? (
+            <div className="aviso">Já existe um preset seu com esse nome. Substituir pelo que está na tela?</div>
+          ) : null}
+          {salvando.erro ? <div className="aviso erro">{salvando.erro}</div> : null}
+          <div className="linha-de-opcoes">
+            {salvando.conflito ? (
+              <button type="button" className="botao pequeno usar" onClick={() => void salvar(true)}>Substituir</button>
+            ) : (
+              <button type="submit" className="botao pequeno usar" disabled={!salvando.titulo.trim()}>Salvar</button>
+            )}
+            <button type="button" className="botao pequeno" onClick={() => setSalvando(null)}>Cancelar</button>
+          </div>
+        </form>
+      ) : null}
+      <div className="presets-meus">
+        <small>Os seus presets ficam só neste computador.</small>
+        {presets.some((p) => p.meu) ? (
+          <a className="link" href={api.exportarPresetsUrl()} download="meus-presets.json">Exportar os seus</a>
+        ) : null}
+        <label className="link">
+          Importar
+          <input type="file" accept=".json,application/json" hidden aria-label="importar presets"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = '';
+              if (f) void importar(f);
+            }} />
+        </label>
+      </div>
+      {importado ? <div className={`aviso${importado.erro ? ' erro' : ''}`} role="status">{importado.texto}</div> : null}
       <div className="grade">
         <Interruptor ligado={edicao.cortes} aoMudar={(v) => mudar({cortes: v})} titulo="Cortar silêncios"
           descricao="Tira as pausas longas entre as frases. A legenda acompanha o corte." />

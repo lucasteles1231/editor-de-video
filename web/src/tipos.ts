@@ -50,7 +50,12 @@ export type Preset = {
   edicao: Partial<Edicao>;
   saida: Pick<Saida, 'resolucao' | 'fps' | 'qualidade'>;
   thumb: {modelo: Modelo; cor: Cor};
+  /** Criado por quem usa (fica no presets.json da pasta de dados dele). */
+  meu?: boolean;
 };
+
+/** O resultado de importar um arquivo de presets. */
+export type PresetsImportados = {entraram: string[]; recusados: string[]; presets: Preset[]};
 
 export type Saida = {
   formato: string;

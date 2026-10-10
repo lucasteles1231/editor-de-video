@@ -530,6 +530,26 @@ export const App: React.FC = () => {
 
   const marcado = useMemo(() => (estado && edicao && saida ? presetMarcado(estado.presets, edicao, saida) : null),
     [estado, edicao, saida]);
+  // Os presets de quem usa: o servidor devolve a lista inteira, que entra no estado.
+  const trocarPresets = (lista: Preset[]) => setEstado((e) => (e ? {...e, presets: lista} : e));
+  const salvarPreset = async (titulo: string, frase: string, substituir: boolean) => {
+    if (!edicao || !saida) return;
+    const r = await api.salvarPreset({
+      titulo, frase, edicao,
+      saida: {resolucao: saida.resolucao, fps: saida.fps, qualidade: saida.qualidade},
+      thumb: {modelo: thumb.modelo, cor: thumb.cor},
+    }, substituir);
+    trocarPresets(r.presets);
+  };
+  const apagarPreset = async (p: Preset) => {
+    if (!window.confirm(`Apagar o preset “${p.titulo}”? Ele sai deste computador.`)) return;
+    trocarPresets((await api.apagarPreset(p.nome)).presets);
+  };
+  const importarPresets = async (arquivo: File) => {
+    const r = await api.importarPresets(arquivo);
+    trocarPresets(r.presets);
+    return r;
+  };
   const escolherPreset = (p: Preset) => {
     if (!edicao || !saida) return;
     const tela = aplicarPreset(p, {edicao, saida, thumb});
@@ -662,7 +682,8 @@ export const App: React.FC = () => {
             <>
               <PassoEdicoes edicao={edicao} mudar={(p) => setEdicao({...edicao, ...p})}
                 porCima={naMontagem ? montagem.porCima : null} presets={estado.presets} marcado={marcado}
-                aoEscolherPreset={escolherPreset} temas={estado.temas_dos_sons} naMontagem={naMontagem} />
+                aoEscolherPreset={escolherPreset} aoSalvarPreset={salvarPreset} aoApagarPreset={apagarPreset}
+                aoImportarPresets={importarPresets} temas={estado.temas_dos_sons} naMontagem={naMontagem} />
               <PassoLegenda estado={estado} edicao={edicao} saida={saida}
                 mudar={(p) => setEdicao({...edicao, ...p})} mudarSaida={(p) => setSaida({...saida, ...p})} />
               {/* A biblioteca sai em 1920 × 1080, qualquer que seja o tamanho dos clipes: ela

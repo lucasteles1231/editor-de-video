@@ -28,3 +28,9 @@ export function aplicarPreset(p: Preset, tela: Tela): Tela {
     thumb: {...tela.thumb, modelo: p.thumb.modelo, cor: p.thumb.cor},
   };
 }
+
+/** O nome de um preset (o mesmo de ``presets.apelido``): "Meu Vlog!" vira "meu-vlog". Dois
+ *  títulos com o mesmo apelido são o mesmo preset. */
+export const apelido = (titulo: string) =>
+  titulo.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);

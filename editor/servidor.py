@@ -74,6 +74,8 @@ MAOS = tuple(sorted(f"mao-{estilo}-{tom}.{'png' if estilo == '3d' else 'svg'}"
 #: A matriz da biblioteca de cenas (o cenas.json do chat tinha 80 KB) e as partes do
 #: áudio separado.
 MATRIZ_MAXIMA = 2 * 1024 * 1024
+#: O arquivo de presets importado (50 presets dão uns 60 KB).
+PRESETS_MAXIMO = 1024 * 1024
 PARTES_MAXIMAS = 30
 #: Envios mais velhos que isto são apagados quando a interface abre.
 GUARDAR_ENVIOS_S = 2 * 24 * 3600
@@ -305,6 +307,46 @@ def criar_app(token: str, *, porta: int, pasta_saida: Path | None = None,
             "presets": presets.para_json(),
             "temas_dos_sons": sons.temas(),
         }
+
+    # ── os presets de quem usa ─────────────────────────────────────────────
+    # Ficam no presets.json da pasta de dados; a página recebe a lista inteira de volta.
+
+    @app.post("/api/presets")
+    def salvar_preset(dados: Annotated[dict, Body()]):
+        try:
+            p = presets.salvar(dados, substituir=bool(dados.get("substituir")))
+        except presets.PresetJaExiste as erro:
+            raise HTTPException(409, str(erro)) from erro
+        except presets.PresetInvalido as erro:
+            raise HTTPException(422, str(erro)) from erro
+        return {"salvo": p.nome, "presets": presets.para_json()}
+
+    @app.delete("/api/presets/{nome}")
+    def apagar_preset(nome: str):
+        try:
+            presets.apagar(nome)
+        except presets.PresetInvalido as erro:
+            raise HTTPException(404, str(erro)) from erro
+        return {"presets": presets.para_json()}
+
+    @app.get("/api/presets/exportar")
+    def exportar_presets():
+        corpo = json.dumps(presets.exportar(), ensure_ascii=False, indent=1)
+        return Response(corpo, media_type="application/json", headers={
+            "Content-Disposition": 'attachment; filename="meus-presets.json"'})
+
+    @app.post("/api/presets/importar")
+    def importar_presets(arquivo: Annotated[UploadFile, File()]):
+        bruto = arquivo.file.read(PRESETS_MAXIMO + 1)
+        if len(bruto) > PRESETS_MAXIMO:
+            raise HTTPException(400, "O arquivo de presets passa de 1 MB.")
+        try:
+            entraram, recusados = presets.importar(json.loads(bruto.decode("utf-8-sig")))
+        except (UnicodeDecodeError, ValueError) as erro:
+            mensagem = str(erro) if isinstance(erro, presets.PresetInvalido) else (
+                "Esse arquivo não é um JSON de presets do editor.")
+            raise HTTPException(422, mensagem) from erro
+        return {"entraram": entraram, "recusados": recusados, "presets": presets.para_json()}
 
     @app.get("/api/sons/{tema}.wav")
     def ouvir_tema(tema: str, volume: float = 1.0):

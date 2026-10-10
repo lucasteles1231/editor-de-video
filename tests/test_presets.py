@@ -126,3 +126,111 @@ def test_o_preset_nao_muda_o_formato_da_montagem(monkeypatch, tmp_path):
     with pytest.raises(SystemExit):
         cli.main([str(eu), "--fundo", str(fundo), "--preset", "aula", "--quadro", "vertical"])
     assert visto["montagem"].formato == "vertical"
+
+
+def _meu(titulo="Meu vlog", **edicao) -> dict:
+    """Um preset como a página manda: as edições inteiras da tela."""
+    base = presets.PRESETS["vlog"]
+    return {"titulo": titulo, "frase": "O vlog do meu jeito.", "edicao": {**base.edicao, **edicao},
+            "saida": dict(base.saida), "thumb": {"modelo": "pergunta", "cor": "roxo"}}
+
+
+class TestOsMeus:
+    """Os presets de quem usa: no presets.json da pasta de dados (a do teste, no conftest)."""
+
+    def test_salvar_listar_e_usar(self):
+        p = presets.salvar(_meu(ritmo=1.4))
+        assert (p.nome, p.meu) == ("meu-vlog", True)
+        assert presets.arquivo_dos_meus().is_file()
+        todos = presets.todos()
+        assert list(todos)[: len(presets.PRESETS)] == list(presets.PRESETS)   # os prontos antes
+        assert todos["meu-vlog"].edicao["ritmo"] == 1.4
+        assert todos["meu-vlog"].opcoes().problemas() == []
+        pagina = {d["nome"]: d for d in presets.para_json()}
+        assert pagina["meu-vlog"]["meu"] is True and pagina["padrao"]["meu"] is False
+
+    def test_o_mesmo_nome_so_com_substituir(self):
+        presets.salvar(_meu(ritmo=1.4))
+        with pytest.raises(presets.PresetJaExiste):
+            presets.salvar(_meu("meu  VLOG", ritmo=1.1))
+        presets.salvar(_meu("meu  VLOG", ritmo=1.1), substituir=True)
+        assert len(presets.meus()) == 1 and presets.meus()[0].edicao["ritmo"] == 1.1
+
+    @pytest.mark.parametrize(("dados", "trecho"), [
+        (_meu(""), "Dê um nome"),
+        (_meu("Padrão"), "preset pronto"),
+        (_meu("x" * 41), "40 letras"),
+        (_meu("!!!"), "letra ou um número"),
+        (_meu(ritmo=9.0), "ritmo"),
+        (_meu(cortes="sim"), "cortes"),
+        (_meu(tema_dos_sons="nenhum"), "tema de sons"),
+        ({**_meu(), "saida": {"resolucao": "8k"}}, "saída"),
+        ({**_meu(), "thumb": {"modelo": "outro", "cor": "rosa"}}, "thumbnail"),
+        ("não é um preset", "não é um preset"),
+    ])
+    def test_o_que_e_recusado(self, dados, trecho):
+        with pytest.raises(presets.PresetInvalido, match=trecho):
+            presets.salvar(dados)
+        assert presets.meus() == []
+
+    def test_apagar(self):
+        presets.salvar(_meu())
+        presets.apagar("meu-vlog")
+        assert presets.meus() == []
+        with pytest.raises(presets.PresetInvalido):
+            presets.apagar("padrao")                    # um pronto não se apaga
+
+    def test_arquivo_estragado_nao_derruba(self):
+        presets.arquivo_dos_meus().parent.mkdir(parents=True, exist_ok=True)
+        presets.arquivo_dos_meus().write_text("{ isto não é json", encoding="utf-8")
+        assert presets.meus() == [] and list(presets.todos()) == list(presets.PRESETS)
+
+    def test_exportar_e_importar_em_outro_computador(self, monkeypatch, tmp_path):
+        presets.salvar(_meu(ritmo=1.4))
+        presets.salvar(_meu("Aula rápida", ritmo=0.9, voz="estudio"))
+        arquivo = presets.exportar()
+        assert arquivo["editor-de-video"] == "presets" and len(arquivo["presets"]) == 2
+        # o outro computador: outra pasta de dados, com um preset que tem o mesmo nome
+        outra = tmp_path / "outro-computador"
+        outra.mkdir()
+        monkeypatch.setattr("editor.ia.pasta_de_dados", lambda: outra)
+        presets.salvar(_meu(ritmo=0.6))
+        estragado = {"titulo": "Quebrado", "edicao": {"ritmo": "rápido"}}
+        entraram, recusados = presets.importar(
+            {**arquivo, "presets": [*arquivo["presets"], estragado]})
+        assert entraram == ["Meu vlog", "Aula rápida"]
+        assert len(recusados) == 1 and recusados[0].startswith("Quebrado:")
+        meus = {p.nome: p for p in presets.meus()}
+        assert meus["meu-vlog"].edicao["ritmo"] == 1.4          # o importado substitui
+        assert meus["aula-rapida"].edicao["voz"] == "estudio"
+
+    def test_importar_o_que_nao_e_preset(self):
+        with pytest.raises(presets.PresetInvalido, match="não tem presets"):
+            presets.importar({"cenas": []})
+
+    def test_o_teto(self, monkeypatch):
+        monkeypatch.setattr(presets, "TETO", 2)
+        presets.salvar(_meu("Um"))
+        presets.salvar(_meu("Dois"))
+        with pytest.raises(presets.PresetInvalido, match="Cabem até 2"):
+            presets.salvar(_meu("Três"))
+
+
+class TestOsMeusNoTerminal:
+    def test_salvar_pelo_terminal_e_usar(self, capsys, tmp_path, monkeypatch):
+        assert cli.main(["--preset", "gameplay", "--ritmo", "1.3", "--qualidade", "leve",
+                         "--salvar-preset", "Meu gameplay", "--frase", "Gameplay mais calmo"]) == 0
+        assert "--preset meu-gameplay" in capsys.readouterr().out
+        p = presets.todos()["meu-gameplay"]
+        assert p.edicao["ritmo"] == 1.3 and p.edicao["tema_dos_sons"] == "gameplay"
+        assert p.saida == {**presets.PRESETS["gameplay"].saida, "qualidade": "leve"}
+        assert p.frase == "Gameplay mais calmo"
+        assert cli.main(["--presets"]) == 0
+        assert "meu-gameplay  Meu gameplay  (seu)" in capsys.readouterr().out
+        # o --preset aceita o seu (o parser lê a lista na hora)
+        a = cli.argumentos().parse_args(["video.mp4", "--preset", "meu-gameplay"])
+        assert a.preset == "meu-gameplay"
+
+    def test_nome_de_um_pronto_e_recusado(self, capsys):
+        assert cli.main(["--salvar-preset", "Humor"]) == 2
+        assert "preset pronto" in capsys.readouterr().err

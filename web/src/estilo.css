@@ -405,6 +405,59 @@ button.preset:hover { border-color: var(--linha); }
 }
 .preset.personalizado { border-style: dashed; }
 .preset.personalizado.marcado { border-style: solid; background: color-mix(in srgb, var(--rosa) 18%, var(--papel)); }
+.preset.personalizado .salvar-preset { margin-top: 6px; align-self: flex-start; }
+/* os presets de quem usa: o mesmo cartão, com a marca "seu" e o × de apagar */
+.preset-meu { position: relative; display: flex; }
+.preset-meu .preset { flex: 1; padding-right: 34px; }
+.selo-meu {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--ciano);
+  color: #1a1a1a;
+  font: 700 11px var(--corpo);
+  vertical-align: 2px;
+}
+.apagar-preset {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--tinta-suave);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.apagar-preset:hover, .apagar-preset:focus-visible { background: color-mix(in srgb, var(--erro) 18%, var(--papel)); color: var(--tinta); }
+.novo-preset {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px 14px;
+  margin: -4px 0 14px;
+  padding: 14px 16px;
+  border: 2px solid var(--linha);
+  border-radius: 14px;
+  background: var(--cartao);
+}
+.novo-preset > small, .novo-preset > .aviso, .novo-preset > .linha-de-opcoes { grid-column: 1 / -1; }
+.novo-preset > small { color: var(--tinta-suave); }
+.novo-preset .aviso { margin-top: 0; }
+.novo-preset input {
+  font: inherit;
+  padding: 8px 11px;
+  border: 2px solid var(--linha);
+  border-radius: 10px;
+  background: var(--papel);
+  color: var(--tinta);
+}
+.presets-meus { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: -6px 0 14px; }
+.presets-meus small { color: var(--tinta-suave); }
+.presets-meus .link { font-size: 13.5px; font-weight: 600; text-decoration: underline; cursor: pointer; color: var(--tinta); }
 
 /* ── onde vai postar (passo 1) ── */
 .plataformas {

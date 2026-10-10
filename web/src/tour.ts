@@ -57,7 +57,7 @@ export function comecarTour(): void {
           side: 'right',
           align: 'start',
           title: '2. Escolha as edições',
-          description: 'Comece por um preset e ajuste o que quiser. O <b>Notícia com cenas</b> liga a janela com câmera (o personagem na borda da cena), os cartões animados, a voz de estúdio, o bipe nas palavras da lista e os sons do tema Notícia. Os outros cuidam de cortes, zoom, palavras que saltam, ícones e sons; o botão Ouvir toca cada tema.',
+          description: 'Comece por um preset e ajuste o que quiser; do jeito que ficar, ele vira um preset seu com <b>Salvar como preset</b>. O <b>Notícia com cenas</b> liga a janela com câmera (o personagem na borda da cena), os cartões animados, a voz de estúdio, o bipe nas palavras da lista e os sons do tema Notícia. Os outros cuidam de cortes, zoom, palavras que saltam, ícones e sons; o botão Ouvir toca cada tema.',
         },
       },
       {

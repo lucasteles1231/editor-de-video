@@ -756,3 +756,47 @@ class TestAMinhaVoz:
         assert cliente.delete("/api/vozes/outra", headers=CABECA).status_code == 404
         assert cliente.get("/api/vozes/..%2Fsegredo/referencia.wav",
                            headers=CABECA).status_code == 404
+
+
+class TestOsMeusPresets:
+    """Salvar, apagar, exportar e importar os presets de quem usa pela API."""
+
+    @staticmethod
+    def _meu(titulo="Meu review"):
+        from editor import presets
+
+        base = presets.PRESETS["review"]
+        return {"titulo": titulo, "frase": "", "edicao": {**base.edicao, "ritmo": 1.3},
+                "saida": base.saida, "thumb": base.thumb}
+
+    def test_salvar_aparece_no_estado_e_apagar(self, cliente):
+        r = cliente.post("/api/presets", headers=CABECA, json=self._meu())
+        assert r.status_code == 200 and r.json()["salvo"] == "meu-review"
+        estado = cliente.get("/api/estado", headers=CABECA).json()
+        meu = next(p for p in estado["presets"] if p["nome"] == "meu-review")
+        assert meu["meu"] and meu["edicao"]["ritmo"] == 1.3 and meu["frase"] == "Um preset seu."
+        # de novo, só substituindo
+        assert cliente.post("/api/presets", headers=CABECA, json=self._meu()).status_code == 409
+        r = cliente.post("/api/presets", headers=CABECA, json={**self._meu(), "substituir": True})
+        assert r.status_code == 200
+        r = cliente.delete("/api/presets/meu-review", headers=CABECA)
+        assert r.status_code == 200 and all(not p["meu"] for p in r.json()["presets"])
+        assert cliente.delete("/api/presets/padrao", headers=CABECA).status_code == 404
+
+    def test_recusa_com_o_motivo(self, cliente):
+        r = cliente.post("/api/presets", headers=CABECA, json=self._meu("Short de vlog"))
+        assert r.status_code == 422 and "preset pronto" in r.json()["detail"]
+
+    def test_exportar_e_importar(self, cliente):
+        cliente.post("/api/presets", headers=CABECA, json=self._meu())
+        r = cliente.get("/api/presets/exportar", headers=CABECA)
+        assert "meus-presets.json" in r.headers["content-disposition"]
+        arquivo = r.content
+        cliente.delete("/api/presets/meu-review", headers=CABECA)
+        r = cliente.post("/api/presets/importar", headers=CABECA,
+                         files={"arquivo": ("meus-presets.json", arquivo, "application/json")})
+        assert r.status_code == 200 and r.json()["entraram"] == ["Meu review"]
+        assert any(p["nome"] == "meu-review" for p in r.json()["presets"])
+        r = cliente.post("/api/presets/importar", headers=CABECA,
+                         files={"arquivo": ("x.json", b"nada disso", "application/json")})
+        assert r.status_code == 422
