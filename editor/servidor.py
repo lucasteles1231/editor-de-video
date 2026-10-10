@@ -45,11 +45,13 @@ from editor import (
     icones,
     imagens,
     montagem,
+    motor_de_voz,
     pexels,
     presets,
     recorte,
     sons,
     transcricao,
+    voz_clonada,
 )
 from editor import saida as saida_mod
 from editor import video as video_mod
@@ -208,6 +210,8 @@ def criar_app(token: str, *, porta: int, pasta_saida: Path | None = None,
     personagens: dict[str, dict] = {}
     audios: dict[str, dict] = {}
     bibliotecas: dict[str, dict] = {}
+    gravacoes: dict[str, voz_clonada.Gravacao] = {}
+    narracoes: dict[str, dict] = {}
     recortes: dict[tuple[str, float], tuple[np.ndarray, recorte.Recorte]] = {}
     trava_dos_recortes = threading.Lock()
     hosts = {f"127.0.0.1:{porta}", f"localhost:{porta}"}
@@ -493,6 +497,192 @@ def criar_app(token: str, *, porta: int, pasta_saida: Path | None = None,
         audios[aid] = {"caminho": destino, "nome": destino.name, "duracao": duracao}
         return {"id": aid, "nome": destino.name, "tamanho_bytes": destino.stat().st_size,
                 "duracao": round(duracao, 2)}
+
+    # ── "Minha voz": o motor, a leitura gravada, as vozes salvas e a narração ──
+    # A gravação e a voz ficam no computador; a narração vira um áudio separado como
+    # outro qualquer (com o roteiro ao lado, para a legenda sair com a grafia dele).
+
+    def _voz(erro: voz_clonada.VozInvalida) -> HTTPException:
+        return HTTPException(422, str(erro))
+
+    def _gravacao(gid: str) -> voz_clonada.Gravacao:
+        if gid not in gravacoes:
+            raise HTTPException(404, "Gravação não encontrada: comece a leitura de novo.")
+        return gravacoes[gid]
+
+    @app.get("/api/vozes")
+    def estado_das_vozes():
+        return {"motor": motor_de_voz.estado(), "vozes": voz_clonada.vozes()}
+
+    @app.post("/api/vozes/motor")
+    def instalar_o_motor():
+        try:
+            return motor_de_voz.instalar_em_segundo_plano()
+        except motor_de_voz.ErroDoMotor as erro:
+            raise HTTPException(409, str(erro)) from erro
+
+    @app.get("/api/vozes/motor")
+    def andamento_do_motor():
+        return motor_de_voz.estado()
+
+    @app.post("/api/vozes/motor/cancelar")
+    def cancelar_o_motor():
+        motor_de_voz.cancelar_instalacao()
+        return motor_de_voz.estado()
+
+    @app.delete("/api/vozes/motor")
+    def desinstalar_o_motor():
+        try:
+            motor_de_voz.desinstalar()
+        except motor_de_voz.ErroDoMotor as erro:
+            raise HTTPException(409, str(erro)) from erro
+        return motor_de_voz.estado()
+
+    @app.post("/api/vozes/gravacoes")
+    def nova_gravacao(dados: Annotated[dict, Body()]):
+        gid = uuid.uuid4().hex[:12]
+        try:
+            g = voz_clonada.Gravacao(str(dados.get("nome", "")), envios / f"voz-{gid}")
+        except voz_clonada.VozInvalida as erro:
+            raise _voz(erro) from erro
+        gravacoes[gid] = g
+        return {"id": gid, **g.para_dict()}
+
+    @app.get("/api/vozes/gravacoes/{gid}")
+    def ver_gravacao(gid: str):
+        return {"id": gid, **_gravacao(gid).para_dict()}
+
+    @app.put("/api/vozes/gravacoes/{gid}/paragrafos/{indice}")
+    def gravar_paragrafo(gid: str, indice: int, arquivo: Annotated[UploadFile, File()]):
+        """Um parágrafo gravado pelo microfone da página (ou regravado)."""
+        g = _gravacao(gid)
+        sufixo = Path(_nome_seguro(arquivo.filename or "")).suffix or ".webm"
+        destino = g.pasta / f"enviado-{indice + 1:02d}{sufixo}"
+        with destino.open("wb") as f:
+            shutil.copyfileobj(arquivo.file, f, length=1024 * 1024)
+        try:
+            g.receber_paragrafo(indice, destino)
+        except voz_clonada.VozInvalida as erro:
+            raise _voz(erro) from erro
+        finally:
+            destino.unlink(missing_ok=True)
+        return {"id": gid, **g.para_dict()}
+
+    @app.post("/api/vozes/gravacoes/{gid}/leitura")
+    def enviar_leitura(gid: str, arquivo: Annotated[UploadFile, File()]):
+        """A leitura inteira, gravada fora da página, num arquivo só."""
+        g = _gravacao(gid)
+        destino = g.pasta / f"enviado{Path(_nome_seguro(arquivo.filename or '')).suffix or '.m4a'}"
+        with destino.open("wb") as f:
+            shutil.copyfileobj(arquivo.file, f, length=1024 * 1024)
+        try:
+            g.receber_leitura(destino)
+        except voz_clonada.VozInvalida as erro:
+            raise _voz(erro) from erro
+        finally:
+            destino.unlink(missing_ok=True)
+        return {"id": gid, **g.para_dict()}
+
+    @app.get("/api/vozes/gravacoes/{gid}/paragrafos/{indice}.wav")
+    def ouvir_paragrafo(gid: str, indice: int):
+        caminho = _gravacao(gid).wav(indice)
+        if not caminho.is_file():
+            raise HTTPException(404, "Este parágrafo ainda não foi gravado.")
+        return FileResponse(caminho, media_type="audio/wav", headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/vozes/gravacoes/{gid}/salvar")
+    def salvar_voz(gid: str):
+        try:
+            v = voz_clonada.salvar(_gravacao(gid))
+        except voz_clonada.VozInvalida as erro:
+            raise _voz(erro) from erro
+        shutil.rmtree(gravacoes.pop(gid).pasta, ignore_errors=True)
+        return v
+
+    @app.delete("/api/vozes/{slug}")
+    def apagar_voz(slug: str):
+        try:
+            voz_clonada.apagar(slug)
+        except voz_clonada.VozInvalida as erro:
+            raise HTTPException(404, str(erro)) from erro
+        return {"vozes": voz_clonada.vozes()}
+
+    @app.get("/api/vozes/{slug}/referencia.wav")
+    def ouvir_referencia(slug: str):
+        try:
+            return FileResponse(voz_clonada.referencia(slug), media_type="audio/wav")
+        except voz_clonada.VozInvalida as erro:
+            raise HTTPException(404, str(erro)) from erro
+
+    @app.put("/api/vozes/{slug}/pronuncia")
+    def salvar_pronuncia(slug: str, dados: Annotated[dict, Body()]):
+        try:
+            return voz_clonada.salvar_pronuncia(
+                slug, voz_clonada.ler_pronuncia(str(dados.get("texto", ""))))
+        except voz_clonada.VozInvalida as erro:
+            raise HTTPException(404, str(erro)) from erro
+
+    @app.post("/api/vozes/{slug}/narrar")
+    def narrar(slug: str, dados: Annotated[dict, Body()]):
+        """Narra o roteiro em segundo plano; quando termina, o WAV vira um áudio separado."""
+        if any(n["rodando"] for n in narracoes.values()):
+            raise HTTPException(409, "Já há uma narração rodando.")
+        roteiro = str(dados.get("roteiro") or "")
+        try:
+            voz_clonada.ler_voz(slug)
+            if not roteiro.strip():
+                raise voz_clonada.VozInvalida("O roteiro está vazio.")
+        except voz_clonada.VozInvalida as erro:
+            raise _voz(erro) from erro
+        if not motor_de_voz.instalado():
+            raise HTTPException(409, "Instale a voz sintetizada primeiro.")
+        pronuncia = (voz_clonada.ler_pronuncia(str(dados["pronuncia"]))
+                     if dados.get("pronuncia") is not None else None)
+        nid = uuid.uuid4().hex[:12]
+        estado = {"id": nid, "rodando": True, "feitas": 0, "total": 0, "erro": "",
+                  "audio": None, "cancelar": threading.Event()}
+        narracoes[nid] = estado
+
+        def andou(feitas: int, total: int) -> None:
+            estado.update(feitas=feitas, total=total)
+
+        def rodar() -> None:
+            try:
+                aid = uuid.uuid4().hex[:12]
+                destino = envios / aid / f"narracao-{slug}.wav"
+                destino.parent.mkdir(parents=True)
+                n = voz_clonada.narrar(slug, roteiro, destino, pronuncia=pronuncia,
+                                       progresso=andou, parar=estado["cancelar"].is_set)
+                audios[aid] = {"caminho": destino, "nome": destino.name, "duracao": n.segundos}
+                estado["audio"] = {"id": aid, "nome": destino.name, "duracao": n.segundos,
+                                   "tamanho_bytes": destino.stat().st_size,
+                                   "reaproveitados": n.reaproveitados, "aparelho": n.aparelho}
+            except (voz_clonada.VozInvalida, motor_de_voz.ErroDoMotor) as erro:
+                estado["erro"] = str(erro)
+            except Exception as erro:
+                logger.exception("a narração não saiu")
+                estado["erro"] = f"A narração não saiu: {type(erro).__name__}: {erro}"
+            finally:
+                estado["rodando"] = False
+
+        threading.Thread(target=rodar, daemon=True, name=f"narrar-{nid}").start()
+        return {k: v for k, v in estado.items() if k != "cancelar"}
+
+    @app.get("/api/vozes/narracoes/{nid}")
+    def andamento_da_narracao(nid: str):
+        if nid not in narracoes:
+            raise HTTPException(404, "Narração não encontrada.")
+        return {k: v for k, v in narracoes[nid].items() if k != "cancelar"}
+
+    @app.post("/api/vozes/narracoes/{nid}/cancelar")
+    def cancelar_narracao(nid: str):
+        if nid in narracoes:
+            narracoes[nid]["cancelar"].set()
+        return {"ok": True}
+
+    @app.get("/api/audios/{aid}/arquivo")
+    def ouvir_audio(aid: str):
+        return FileResponse(_audio(aid)["caminho"])
 
     # ── a biblioteca de cenas: a pasta dos clipes e a matriz ──────────────
 

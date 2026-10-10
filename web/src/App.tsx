@@ -109,6 +109,8 @@ export const App: React.FC = () => {
   const [personagem, setPersonagem] = useState<PersonagemInfo | null>(null);
   const [recorteDoPersonagem, setRecorteDoPersonagem] = useState<RecorteInfo | null>(null);
   const [audios, setAudios] = useState<AudioInfo[]>([]);
+  // A "Minha voz": a narração do roteiro com a voz salva, que vai como áudio separado.
+  const [narracao, setNarracao] = useState<AudioInfo | null>(null);
   const [biblioteca, setBiblioteca] = useState<BibliotecaInfo | null>(null);
   // A pasta já subiu (e falta a matriz): o id da biblioteca aberta no servidor.
   const [bibliotecaAberta, setBibliotecaAberta] = useState<string | null>(null);
@@ -164,7 +166,8 @@ export const App: React.FC = () => {
   const chaveDasPlataformas = plataformas.join(',');
   const porCimaPronto = montagem.porCima === 'nada' || Boolean(comPersonagem ? personagem : pessoa);
   const podeEditar = !naMontagem ? Boolean(unico)
-    : Boolean(fundoEfetivo && porCimaPronto && (fala !== 'audio' || audios.length));
+    : Boolean(fundoEfetivo && porCimaPronto && (fala === 'voz' ? narracao
+      : fala !== 'audio' || audios.length));
   const pararDeAcompanhar = useRef<(() => void) | null>(null);
   const recortesPedidos = useRef(new Set<string>());
   const thumbAtual = useRef(thumb);
@@ -506,9 +509,11 @@ export const App: React.FC = () => {
       ...(comCenas && biblioteca ? {biblioteca_id: biblioteca.id} : {fundo_id: fundoEfetivo.id}),
       ...(comPersonagem && personagem ? {personagem_id: personagem.id} : {}),
       ...(montagem.porCima === 'pessoa' && pessoa ? {pessoa_id: pessoa.id} : {}),
-      ...(fala === 'audio' && audios.length ? {audio_ids: audios.map((a) => a.id)} : {}),
+      ...(fala === 'audio' && audios.length ? {audio_ids: audios.map((a) => a.id)}
+        : fala === 'voz' && narracao ? {audio_ids: [narracao.id]} : {}),
       recorte: montagem.recorte, formato: montagem.formato, tirar_fundo_do_personagem: montagem.tirarFundo,
-      fala,
+      // a narração é um áudio separado como outro qualquer
+      fala: fala === 'voz' ? 'audio' : fala,
     }};
     try {
       const t = await api.criarTarefa(alvo, edicao, saida, previa ? 15 : null);
@@ -521,7 +526,7 @@ export const App: React.FC = () => {
       setErroEdicao((e as Error).message);
     }
   }, [video, edicao, saida, previa, quandoTerminar, podeEditar, naMontagem, fundoEfetivo, comCenas, biblioteca,
-    comPersonagem, personagem, pessoa, audios, montagem, camadas, fala]);
+    comPersonagem, personagem, pessoa, audios, narracao, montagem, camadas, fala]);
 
   const marcado = useMemo(() => (estado && edicao && saida ? presetMarcado(estado.presets, edicao, saida) : null),
     [estado, edicao, saida]);
@@ -639,7 +644,7 @@ export const App: React.FC = () => {
               montada a partir de uma pasta de cenas, com cartões animados — tudo feito aqui no seu computador.</p>
           </div>
           <PassoEnvio modo={modo} setModo={trocarModo} video={unico} fundo={fundo} pessoa={pessoa}
-            personagem={personagem} audios={audios} biblioteca={biblioteca}
+            personagem={personagem} audios={audios} narracao={narracao} aoNarrar={setNarracao} biblioteca={biblioteca}
             faltaMatriz={Boolean(bibliotecaAberta && !biblioteca)} enviandoBiblioteca={enviandoBiblioteca}
             bibliotecaId={bibliotecaAberta} gerandoMatriz={gerandoMatriz} revisao={revisao}
             salvandoMatriz={salvandoMatriz} aoGerarMatriz={(a) => void gerarMatriz(a)}

@@ -1,12 +1,13 @@
 /**
- * De onde vem o áudio da montagem: do vídeo de fundo, do vídeo da pessoa ou de um áudio
- * separado (um ou vários). Com o personagem, que não tem som, só do fundo ou do separado;
- * com a biblioteca de cenas (o som dos clipes não é a fala), só da pessoa ou do separado.
+ * De onde vem o áudio da montagem: do vídeo de fundo, do vídeo da pessoa, de um áudio
+ * separado (um ou vários) ou da "Minha voz" (a voz salva narrando um roteiro). Com o
+ * personagem, que não tem som, só do fundo, do separado ou da voz; com a biblioteca de
+ * cenas (o som dos clipes não é a fala), só da pessoa, do separado ou da voz.
  *
  * A escolha de quem edita vale enquanto ela fizer sentido. Sem escolha (ou com uma que
  * não serve mais, como "a pessoa" depois de trocar para o personagem), vale a primeira
  * que tem som: a pessoa, o fundo, o áudio separado. Sem som em lugar nenhum, o fundo: o
- * vídeo sai mudo, sem cortes e sem legenda.
+ * vídeo sai mudo, sem cortes e sem legenda. A "Minha voz" só vale escolhida.
  */
 import type {AudioInfo, Fala, MontagemConfig, VideoInfo} from './tipos';
 
@@ -15,7 +16,7 @@ export const semSom = (v: VideoInfo | null) => Boolean(v && !v.tem_audio);
 
 export function opcoesDeFala(m: MontagemConfig): Fala[] {
   const fundo: Fala[] = m.fonteDoFundo === 'cenas' ? [] : ['fundo'];
-  return m.porCima === 'pessoa' ? [...fundo, 'pessoa', 'audio'] : [...fundo, 'audio'];
+  return m.porCima === 'pessoa' ? [...fundo, 'pessoa', 'audio', 'voz'] : [...fundo, 'audio', 'voz'];
 }
 
 export function falaEfetiva(m: MontagemConfig, fundo: VideoInfo | null, pessoa: VideoInfo | null,

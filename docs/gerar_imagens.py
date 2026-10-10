@@ -571,6 +571,87 @@ def capturas_da_noticia(nav, url: str, pasta: Path) -> None:
     ctx.close()
 
 
+def leitura_de_mentira(caminho: Path, paragrafos: int) -> Path:
+    """A "leitura" para as capturas: um bloco de tom por parágrafo, com pausas. O motor e o
+    transcritor são os falsos, que "ouvem" a leitura perfeita."""
+    import wave
+
+    import numpy as np
+
+    taxa = 48_000
+    t = np.arange(6 * taxa) / taxa
+    bloco = 0.3 * np.sin(2 * np.pi * 180 * t) * ((t % 0.55) < 0.4)
+    pausa = np.zeros(taxa)
+    x = np.concatenate([np.concatenate([pausa, bloco]) for _ in range(paragrafos)] + [pausa])
+    # um chiado de cômodo, para as medidas parecerem as de uma gravação de verdade
+    x = x + 0.0015 * np.random.default_rng(7).standard_normal(len(x))
+    with wave.open(str(caminho), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(taxa)
+        w.writeframes((x * 32767).astype("<i2").tobytes())
+    return caminho
+
+
+def capturas_da_voz(nav, url: str, pasta: Path) -> None:
+    """A "Minha voz": o teleprompter com a nota de um parágrafo, e a narração pronta. Com o
+    motor e o transcritor falsos e uma pasta de dados temporária: nada do computador de
+    quem gera as imagens entra."""
+    from editor import ia, voz_clonada
+
+    dados_de_verdade = ia.pasta_de_dados
+    narracoes_de_verdade = voz_clonada.pasta_das_narracoes
+    ia.pasta_de_dados = lambda: pasta / "dados"
+    (pasta / "narracoes").mkdir(exist_ok=True)
+    voz_clonada.pasta_das_narracoes = lambda: pasta / "narracoes"
+    os.environ.update(EDITOR_VOZ="falsa", EDITOR_TRANSCRITOR="falso")
+    try:
+        ctx = nav.new_context(viewport={"width": 1280, "height": 1700}, device_scale_factor=2,
+                              color_scheme="light")
+        ctx.add_init_script(SEM_TOUR)
+        pagina = ctx.new_page()
+        pagina.goto(url)
+        pagina.add_style_tag(content=".cabecalho { position: static !important; }")
+        pagina.get_by_role("button", name="Um fundo e, por cima").click()
+        pagina.get_by_role("button", name="Biblioteca de cenas").click()
+        pagina.get_by_role("button", name="Nada", exact=True).click()
+        pagina.get_by_role("group", name="de onde vem o áudio").get_by_role(
+            "button", name="Minha voz (de um roteiro)").click()
+        gravar = pagina.get_by_label("gravar a sua voz")
+        gravar.get_by_label("Seu nome (vai na autorização)").fill("Ana Lúcia")
+        gravar.get_by_role("button", name="Começar a leitura").click()
+        gravar.get_by_label("o parágrafo 1").wait_for()
+        total = gravar.get_by_label("os parágrafos da leitura").get_by_role("button").count()
+        gravar.get_by_role("button", name="Enviar a gravação").click()
+        gravar.get_by_label("a gravação da leitura inteira").set_input_files(
+            str(leitura_de_mentira(pasta / "leitura.wav", total)))
+        gravar.get_by_text(f"{total} de {total} parágrafos aprovados").wait_for(timeout=60_000)
+        # o teleprompter, no parágrafo das perguntas, já aprovado
+        gravar.get_by_role("button", name="Pelo microfone").click()
+        gravar.get_by_label("parágrafo 3: aprovado").click()
+        pagina.wait_for_timeout(400)
+        salvar(gravar.screenshot(), "interface-voz-leitura.png", 1200)
+
+        gravar.get_by_role("button", name="Salvar a minha voz").click()
+        voz = pagina.get_by_label("minha voz")
+        voz.get_by_label("o roteiro a narrar").fill(
+            "A Rockstar confirmou: o PEGI deu 18 anos para o GTA 6, e ninguém se surpreendeu.\n\n"
+            "E aí, a Rockstar tá certa em não censurar nada, ou passou do ponto? Comenta aí!")
+        voz.locator("summary", has_text="Pronúncia").click()
+        voz.get_by_label("a lista de pronúncia").fill("PEGI = pégui")
+        voz.get_by_role("button", name="Narrar o roteiro").click()
+        voz.get_by_text("pronta para editar").wait_for(timeout=60_000)
+        pagina.wait_for_timeout(500)
+        camada = pagina.locator(".camada", has=pagina.get_by_label("minha voz"))
+        salvar(camada.screenshot(), "interface-voz-narrar.png", 1200)
+        ctx.close()
+    finally:
+        ia.pasta_de_dados = dados_de_verdade
+        voz_clonada.pasta_das_narracoes = narracoes_de_verdade
+        for nome in ("EDITOR_VOZ", "EDITOR_TRANSCRITOR"):
+            os.environ.pop(nome, None)
+
+
 def capturas(exemplo: Path, pasta: Path, *, ia_de_verdade: bool = False,
              tela: Path | None = None, com_ideias: bool = True) -> None:
     from playwright.sync_api import sync_playwright
@@ -656,6 +737,7 @@ def _capturas(exemplo: Path, pasta: Path, url: str, config_de_verdade, *,
 
             # A montagem com a biblioteca de cenas, e o tour.
             capturas_da_noticia(nav, url, pasta)
+            capturas_da_voz(nav, url, pasta)
 
             # A thumbnail com IA: as três ideias e a prévia com as abas.
             if not com_ideias:
@@ -702,6 +784,7 @@ def so_noticia() -> None:
         nav = p.chromium.launch()
         try:
             capturas_da_noticia(nav, url, Path(tmp))
+            capturas_da_voz(nav, url, Path(tmp))
         finally:
             nav.close()
 
@@ -717,6 +800,7 @@ FUNCOES = {
     "pessoa": ("arrows-move", ROSA), "icones": ("icons", ROXO),
     "sons": ("volume", AMARELO), "thumbnail": ("photo", ROSA), "local": ("lock", CIANO),
     "cenas": ("movie", LIMA), "cartoes": ("layout-cards", CIANO), "voz": ("microphone", ROXO),
+    "minha-voz": ("microphone-2", AMARELO),
 }
 
 

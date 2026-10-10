@@ -25,7 +25,7 @@ export function comecarTour(): void {
         popover: {
           title: 'Dois jeitos de usar',
           description: '<b>Um vídeo seu falando:</b> arraste o vídeo e escolha um preset. Sai cortado, legendado, com zoom, sons e thumbnail.<br><br>'
-            + '<b>Uma notícia montada com cenas:</b> traga a pasta das cenas (com a matriz <code>cenas.json</code>), o áudio da narração (um ou vários arquivos) e, se quiser, um personagem em GIF. Escolha o preset <b>Notícia com cenas</b>: o Gemini escolhe as cenas, escreve os cartões e marca a legenda.<br><br>'
+            + '<b>Uma notícia montada com cenas:</b> traga a pasta das cenas (com a matriz <code>cenas.json</code>), o áudio da narração (um ou vários arquivos, ou só o roteiro, lido pela <b>Minha voz</b>) e, se quiser, um personagem em GIF. Escolha o preset <b>Notícia com cenas</b>: o Gemini escolhe as cenas, escreve os cartões e marca a legenda.<br><br>'
             + 'Tudo roda no seu computador. O Gemini é opcional e só entra com a sua chave (passo 5).',
         },
       },
@@ -38,7 +38,7 @@ export function comecarTour(): void {
           description: '<b>Um vídeo com você falando</b>, vertical ou horizontal. Ou <b>um fundo e, por cima…</b>, em camadas:<br>'
             + '• <b>o fundo:</b> um vídeo, ou a <b>biblioteca de cenas</b>: arraste a pasta, e a matriz <code>cenas.json</code> que estiver dentro entra junto. Sem matriz, o botão <b>Gerar a matriz</b> pede ao Gemini a descrição de cada cena, e você revisa numa tabela;<br>'
             + '• <b>por cima:</b> o vídeo da pessoa, um personagem animado (GIF) ou nada;<br>'
-            + '• <b>o áudio:</b> do vídeo, ou arquivos separados, um por parágrafo, que tocam na ordem do nome.<br>'
+            + '• <b>o áudio:</b> do vídeo, arquivos separados (um por parágrafo, que tocam na ordem do nome) ou a <b>Minha voz</b>: você lê um texto de 2 minutos uma vez, e a sua voz narra qualquer roteiro. Ela é opcional e se instala à parte, por um botão.<br>'
             + 'Os arquivos são copiados para uma pasta do seu computador.',
         },
       },

@@ -649,3 +649,96 @@ class TestAMatrizGerada:
         assert cliente.get(f"/api/bibliotecas/{bid}/gerar-matriz",
                            headers=CABECA).status_code == 404
         assert cliente.get(f"/api/bibliotecas/{bid}/matriz", headers=CABECA).status_code == 404
+
+
+class TestAMinhaVoz:
+    """ "Minha voz": a leitura gravada pela página (um parágrafo por vez, ou o arquivo
+    inteiro), a voz salva e a narração do roteiro, que vira um áudio separado. O motor e o
+    transcritor são os falsos do conftest."""
+
+    @staticmethod
+    def _fala(segundos: float) -> bytes:
+        from tests.test_voz_clonada import _fala, _wav
+
+        caminho = Path(servidor.pasta_de_envios()) / f"fala-{segundos}.wav"
+        return _wav(caminho, _fala(segundos)).read_bytes()
+
+    def _gravar_tudo(self, cliente) -> str:
+        g = cliente.post("/api/vozes/gravacoes", headers=CABECA, json={"nome": "Ana"}).json()
+        assert g["paragrafos"][0]["texto"].startswith("Eu, Ana, autorizo")
+        for p in g["paragrafos"]:
+            r = cliente.put(f"/api/vozes/gravacoes/{g['id']}/paragrafos/{p['indice']}",
+                            headers=CABECA,
+                            files={"arquivo": ("p.webm", self._fala(5.0), "audio/webm")})
+            assert r.status_code == 200, r.text
+        return g["id"]
+
+    def test_estado_com_o_motor(self, cliente):
+        e = cliente.get("/api/vozes", headers=CABECA).json()
+        assert e["motor"]["instalado"] and e["vozes"] == []
+        assert "GB" in e["motor"]["espaco"]
+
+    def test_gravar_conferir_salvar_e_narrar(self, cliente):
+        gid = self._gravar_tudo(cliente)
+        g = cliente.get(f"/api/vozes/gravacoes/{gid}", headers=CABECA).json()
+        assert g["pronta"] and {p["estado"] for p in g["paragrafos"]} == {"ok"}
+        ouvir = cliente.get(f"/api/vozes/gravacoes/{gid}/paragrafos/0.wav", headers=CABECA)
+        assert ouvir.status_code == 200 and ouvir.content[:4] == b"RIFF"
+        v = cliente.post(f"/api/vozes/gravacoes/{gid}/salvar", headers=CABECA).json()
+        assert v["apelido"] == "ana"
+        # a gravação foi apagada depois de virar voz
+        assert cliente.get(f"/api/vozes/gravacoes/{gid}", headers=CABECA).status_code == 404
+        assert cliente.get("/api/vozes/ana/referencia.wav", headers=CABECA).status_code == 200
+        r = cliente.put("/api/vozes/ana/pronuncia", headers=CABECA, json={"texto": "PEGI = pégui"})
+        assert r.json()["pronuncia"] == {"PEGI": "pégui"}
+
+        n = cliente.post("/api/vozes/ana/narrar", headers=CABECA,
+                         json={"roteiro": "O PEGI deu 18.\n\nE agora? Comenta aí."}).json()
+        fim = time.monotonic() + 30
+        while n["rodando"] and time.monotonic() < fim:
+            time.sleep(0.1)
+            n = cliente.get(f"/api/vozes/narracoes/{n['id']}", headers=CABECA).json()
+        assert n["erro"] == "" and n["audio"]["duracao"] > 1
+        audio = cliente.get(f"/api/audios/{n['audio']['id']}/arquivo", headers=CABECA)
+        assert audio.status_code == 200 and audio.content[:4] == b"RIFF"
+
+        # a narração é o áudio de uma montagem como outro qualquer
+        fundo = _enviar(cliente, fazer_video(Path(servidor.pasta_de_envios()) / "f.mp4",
+                                             segundos=2.0, com_audio=False))
+        t = cliente.post("/api/tarefas", headers=CABECA, json={
+            "montagem": {"fundo_id": fundo["id"], "audio_ids": [n["audio"]["id"]],
+                         "fala": "audio"},
+            "edicao": {"zoom": False, "adesivos": False}, "saida": {}, "previa_s": 2})
+        assert t.status_code == 200, t.text
+        assert _esperar(cliente, t.json()["id"])["estado"] == "pronto"
+
+    def test_a_leitura_inteira_num_arquivo(self, cliente):
+        from tests.test_voz_clonada import _leitura
+
+        g = cliente.post("/api/vozes/gravacoes", headers=CABECA, json={"nome": "Ana"}).json()
+        caminho = _leitura(Path(servidor.pasta_de_envios()) / "leitura.wav",
+                           len(g["paragrafos"]))
+        with open(caminho, "rb") as f:
+            r = cliente.post(f"/api/vozes/gravacoes/{g['id']}/leitura", headers=CABECA,
+                             files={"arquivo": ("leitura.m4a", f, "audio/mp4")})
+        assert r.status_code == 200 and r.json()["pronta"]
+
+    def test_o_que_e_recusado(self, cliente):
+        assert cliente.post("/api/vozes/gravacoes", headers=CABECA,
+                            json={"nome": "R2D2"}).status_code == 422
+        g = cliente.post("/api/vozes/gravacoes", headers=CABECA, json={"nome": "Ana"}).json()
+        # salvar antes de gravar tudo
+        r = cliente.post(f"/api/vozes/gravacoes/{g['id']}/salvar", headers=CABECA)
+        assert r.status_code == 422 and "regravar" in r.json()["detail"]
+        # um parágrafo que não existe, e um arquivo sem áudio
+        assert cliente.put(f"/api/vozes/gravacoes/{g['id']}/paragrafos/99", headers=CABECA,
+                           files={"arquivo": ("p.wav", self._fala(3.0), "audio/wav")}
+                           ).status_code == 422
+        assert cliente.put(f"/api/vozes/gravacoes/{g['id']}/paragrafos/1", headers=CABECA,
+                           files={"arquivo": ("p.wav", b"nada", "audio/wav")}).status_code == 422
+        # narrar com uma voz que não existe, ou sem roteiro
+        assert cliente.post("/api/vozes/outra/narrar", headers=CABECA,
+                            json={"roteiro": "Oi."}).status_code == 422
+        assert cliente.delete("/api/vozes/outra", headers=CABECA).status_code == 404
+        assert cliente.get("/api/vozes/..%2Fsegredo/referencia.wav",
+                           headers=CABECA).status_code == 404

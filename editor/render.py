@@ -94,10 +94,13 @@ def obter_palavras(entrada: Path, duracao: float, edicao: OpcoesDeEdicao,
                                     dica=dica)
     chave = hashlib.sha1(json.dumps(origem, sort_keys=True).encode()).hexdigest()[:16]
     guardada = pasta_de_cache() / f"{chave}.json"
+    # A narração da voz sintetizada traz o roteiro ao lado: a legenda sai com a grafia
+    # dele ("PEGI", e não o "Peggy" que o Whisper ouviu), nos tempos do Whisper.
+    texto = transcricao.texto_ao_lado(entrada)
     palavras = transcricao.carregar(guardada, origem=origem)
     if palavras is not None:
         progresso("transcrevendo", 1.0, "transcrição reaproveitada")
-        return palavras
+        return transcricao.ajustar_ao_texto(palavras, texto) if texto else palavras
     if not transcricao.modelo_baixado(edicao.modelo):
         progresso("transcrevendo", 0.0,
                   f"baixando o modelo {edicao.modelo} ({transcricao.MODELOS[edicao.modelo]}),"
@@ -106,7 +109,7 @@ def obter_palavras(entrada: Path, duracao: float, edicao: OpcoesDeEdicao,
         entrada, idioma=edicao.idioma, modelo=edicao.modelo, duracao=duracao,
         progresso=lambda f: progresso("transcrevendo", f, ""), dica=dica)
     transcricao.salvar(palavras, guardada, origem=origem)
-    return palavras
+    return transcricao.ajustar_ao_texto(palavras, texto) if texto else palavras
 
 
 def empurrao(p: plano.Plano, t: float) -> float:

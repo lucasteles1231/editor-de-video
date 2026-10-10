@@ -194,10 +194,10 @@ def test_montagem_com_personagem_e_narracao(navegador, endereco, tmp_path):
     pagina.set_input_files('[data-envio="personagem"] input', str(gif(tmp_path / "b.gif", lado=80)))
     expect(pagina.get_by_label("dados do personagem")).to_contain_text("4 quadros")
     expect(pagina.locator(".tela-montada .por-cima")).to_be_attached()
-    # De onde vem o áudio: com o personagem, só o fundo ou um áudio separado; e o fundo
-    # deste teste é mudo, então a pílula dele fica desligada.
+    # De onde vem o áudio: com o personagem, o fundo, um áudio separado ou a "Minha voz";
+    # e o fundo deste teste é mudo, então a pílula dele fica desligada.
     audio_vem_de = pagina.get_by_role("group", name="de onde vem o áudio")
-    expect(audio_vem_de.get_by_role("button")).to_have_count(2)
+    expect(audio_vem_de.get_by_role("button")).to_have_count(3)
     expect(audio_vem_de.get_by_role("button", name="O vídeo de fundo")).to_be_disabled()
     expect(pagina.locator('[data-envio="audio"]')).to_have_count(0)
     audio_vem_de.get_by_role("button", name="Áudio separado").click()
@@ -264,9 +264,10 @@ def test_biblioteca_de_cenas(navegador, endereco, tmp_path):
     expect(ficha).to_contain_text("3 cenas", timeout=30_000)
     expect(ficha).to_contain_text("1 marcada “evitar” (fica de fora)")
     pagina.get_by_role("button", name="Nada", exact=True).click()
-    # Sem som nos clipes, a fala vem dos áudios: dois, que tocam na ordem do nome.
+    # Sem som nos clipes, a fala vem dos áudios (ou da "Minha voz"): dois, que tocam na
+    # ordem do nome.
     audio_vem_de = pagina.get_by_role("group", name="de onde vem o áudio")
-    expect(audio_vem_de.get_by_role("button")).to_have_count(1)
+    expect(audio_vem_de.get_by_role("button")).to_have_count(2)
     pagina.set_input_files('[data-envio="audio"] input',
                            [str(audio_wav(tmp_path / "parte 2.wav")),
                             str(audio_wav(tmp_path / "parte 1.wav"))])
@@ -301,6 +302,106 @@ def test_biblioteca_de_cenas(navegador, endereco, tmp_path):
                                                                timeout=180_000)
     assert list((tmp_path / "saida").glob("cenas-editado.mp4"))
     assert not erros, erros
+
+
+def test_minha_voz(navegador, endereco, tmp_path):
+    """A "Minha voz" do começo ao fim, com um arquivo no lugar do microfone: o nome, a
+    leitura enviada e conferida, a voz salva, o roteiro narrado (pelo motor falso) e o
+    pedido de edição com a narração como áudio separado."""
+    from tests.test_voz_clonada import _leitura
+
+    pagina = navegador.new_page(viewport={"width": 1366, "height": 900})
+    pagina.add_init_script("localStorage.setItem('editor-tour-visto', '1')")
+    erros: list[str] = []
+    pagina.on("pageerror", lambda e: erros.append(str(e)))
+    pagina.on("console", lambda m: m.type == "error" and erros.append(m.text))
+    pagina.goto(endereco)
+
+    pagina.get_by_role("button", name="Um fundo e, por cima").click()
+    fundo = fazer_video(tmp_path / "tela.mp4", largura=320, altura=180, segundos=2.0,
+                        com_audio=False)
+    pagina.set_input_files('[data-envio="fundo"] input', str(fundo))
+    expect(pagina.get_by_label("dados do fundo")).to_contain_text("320×180")
+    pagina.get_by_role("button", name="Nada", exact=True).click()
+    pagina.get_by_role("group", name="de onde vem o áudio").get_by_role(
+        "button", name="Minha voz (de um roteiro)").click()
+    editar = pagina.get_by_role("button", name="Editar vídeo")
+    expect(editar).to_be_disabled()                 # sem a narração, ainda não
+
+    # sem nenhuma voz salva, a gravação abre direto
+    gravar = pagina.get_by_label("gravar a sua voz")
+    gravar.get_by_label("Seu nome (vai na autorização)").fill("Ana")
+    gravar.get_by_role("button", name="Começar a leitura").click()
+    expect(gravar.get_by_label("o parágrafo 1")).to_contain_text("Eu, Ana, autorizo")
+    paragrafos = gravar.get_by_label("os parágrafos da leitura").get_by_role("button")
+    total = paragrafos.count()
+    assert total >= 8
+    gravar.get_by_role("button", name="Enviar a gravação").click()
+    expect(gravar.get_by_label("o texto inteiro")).to_contain_text("Que notícia incrível!")
+    gravar.get_by_label("a gravação da leitura inteira").set_input_files(
+        str(_leitura(tmp_path / "leitura.wav", total)))
+    expect(gravar).to_contain_text(f"{total} de {total} parágrafos aprovados", timeout=30_000)
+    expect(gravar.get_by_role("status")).to_contain_text("Parágrafo 1 aprovado")
+    salvar = gravar.get_by_role("button", name="Salvar a minha voz")
+    expect(salvar).to_be_enabled()
+    salvar.click()
+
+    voz = pagina.get_by_label("minha voz")
+    expect(voz.get_by_role("group", name="as vozes salvas").get_by_role("button", name="Ana")
+           ).to_have_attribute("aria-pressed", "true", timeout=15_000)
+    voz.get_by_label("o roteiro a narrar").fill(
+        "A Rockstar confirmou: o PEGI deu 18 anos.\n\nE aí, passou do ponto? Comenta aí.")
+    voz.locator("summary", has_text="Pronúncia").click()
+    voz.get_by_label("a lista de pronúncia").fill("PEGI = pégui")
+    voz.get_by_role("button", name="Narrar o roteiro").click()
+    expect(voz).to_contain_text("pronta para editar", timeout=30_000)
+    expect(voz.locator("summary")).to_have_text("Pronúncia (1)")
+
+    pagina.get_by_role("button", name="Em pé (9:16)").click()
+    expect(editar).to_be_enabled()
+    with pagina.expect_request(lambda r: r.url.split("?")[0].endswith("/api/tarefas")
+                               and r.method == "POST") as pedido:
+        editar.click()
+    montagem = pedido.value.post_data_json["montagem"]
+    assert montagem["fala"] == "audio" and len(montagem["audio_ids"]) == 1
+    pagina.locator(".miniaturas img").first.wait_for(timeout=120_000)
+    assert list((tmp_path / "saida").glob("tela-editado.mp4"))
+    assert not erros, erros
+
+
+def test_minha_voz_pelo_microfone(navegador, endereco):
+    """O teleprompter grava pelo microfone de verdade da página (o MediaRecorder): no
+    Chromium, um microfone falso que toca bipes. A gravação chega ao servidor, é lida
+    pelo PyAV (WebM com Opus) e recebe a nota."""
+    if navegador.browser_type.name != "chromium":
+        pytest.skip("só o Chromium tem o microfone falso")
+    nav = navegador.browser_type.launch(args=["--use-fake-ui-for-media-stream",
+                                              "--use-fake-device-for-media-stream"])
+    try:
+        pagina = nav.new_page()
+        pagina.add_init_script("localStorage.setItem('editor-tour-visto', '1')")
+        pagina.goto(endereco)
+        pagina.get_by_role("button", name="Um fundo e, por cima").click()
+        pagina.get_by_role("group", name="de onde vem o áudio").get_by_role(
+            "button", name="Minha voz (de um roteiro)").click()
+        gravar = pagina.get_by_label("gravar a sua voz")
+        gravar.get_by_label("Seu nome (vai na autorização)").fill("Ana")
+        gravar.get_by_role("button", name="Começar a leitura").click()
+        gravar.get_by_role("button", name="Gravar o parágrafo 1").click()
+        parar = gravar.get_by_role("button", name="Parar")
+        expect(parar).to_be_visible()
+        pagina.wait_for_timeout(3500)
+        parar.click()
+        # o bipe do microfone falso vem no volume máximo: a nota é "estourou", e as
+        # medidas mostram que a gravação foi lida inteira
+        resultado = gravar.get_by_role("status")
+        expect(resultado).to_contain_text("Regrave o parágrafo 1", timeout=30_000)
+        expect(resultado).to_contain_text("O som estourou")
+        expect(resultado).to_contain_text("100% das palavras")
+        expect(gravar.get_by_role("button", name="Regravar o parágrafo 1")).to_be_visible()
+        expect(gravar.get_by_label("parágrafo 1: regravar")).to_be_visible()
+    finally:
+        nav.close()
 
 
 def test_gerar_e_revisar_a_matriz(navegador, endereco, tmp_path):

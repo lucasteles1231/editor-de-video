@@ -106,7 +106,8 @@ export type PorCima = 'pessoa' | 'personagem' | 'nada';
 export type FonteDoFundo = 'video' | 'cenas';
 export type FormatoDoQuadro = 'fundo' | 'vertical' | 'horizontal' | 'quadrado';
 /** De onde vem o áudio: o vídeo de fundo, o vídeo da pessoa ou um áudio separado. */
-export type Fala = 'fundo' | 'pessoa' | 'audio';
+/** ``voz``: a voz salva da pessoa narra um roteiro (a narração vai como áudio separado). */
+export type Fala = 'fundo' | 'pessoa' | 'audio' | 'voz';
 export type MontagemConfig = {
   fonteDoFundo: FonteDoFundo;
   porCima: PorCima;
@@ -124,6 +125,25 @@ export type PersonagemInfo = {
 };
 
 export type AudioInfo = {id: string; nome: string; tamanho_bytes: number; duracao: number};
+
+// ── "Minha voz" ──
+
+/** O motor da voz sintetizada, instalado à parte (editor/motor_de_voz.py). */
+export type MotorDeVoz = {
+  instalado: boolean; falso: boolean; instalando: boolean; etapa: string; fracao: number; ultima: string;
+  erro: string; espaco: string; tempo: string; aparelho: string; pasta: string;
+};
+export type VozSalva = {nome: string; apelido: string; criada: string; segundos: number; pronuncia: Record<string, string>};
+export type MedidasDaLeitura = {segundos: number; lufs: number; snr_db: number; estouro: number};
+export type ParagrafoDaLeitura = {
+  indice: number; texto: string; estado: 'pendente' | 'ok' | 'refazer'; motivos: string[]; cobertura: number;
+  ouvido: string; faltaram: string[]; medidas: MedidasDaLeitura | null;
+};
+export type GravacaoDaVoz = {id: string; nome: string; pronta: boolean; paragrafos: ParagrafoDaLeitura[]};
+export type Narracao = {
+  id: string; rodando: boolean; feitas: number; total: number; erro: string;
+  audio: (AudioInfo & {reaproveitados: number; aparelho: string}) | null;
+};
 
 /** A biblioteca de cenas depois da matriz: a ficha e a capa (a cena forte que a thumbnail usa). */
 export type BibliotecaInfo = {

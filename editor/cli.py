@@ -173,6 +173,23 @@ def argumentos() -> argparse.ArgumentParser:
     g2.add_argument("--assunto", metavar="TEXTO", default="",
                     help='do que são as cenas ("trailers do GTA 6"): ajuda a reconhecer '
                          "personagens")
+    v = p.add_argument_group("minha voz (opcional: a sua voz narrando um roteiro)")
+    v.add_argument("--instalar-voz", action="store_true",
+                   help="instala o motor da voz sintetizada (~3,5 GB, num ambiente à parte)")
+    v.add_argument("--criar-voz", metavar="NOME",
+                   help="sem --gravacao, mostra o texto a ler; com ela, confere a leitura e "
+                        "salva a voz")
+    v.add_argument("--gravacao", type=Path, metavar="ARQUIVO",
+                   help="a leitura do texto inteiro, gravada num arquivo (MP3, WAV, M4A)")
+    v.add_argument("--vozes", action="store_true", help="mostra as vozes salvas")
+    v.add_argument("--minha-voz", metavar="NOME",
+                   help="narra o --roteiro com a voz salva; com --cenas ou --fundo, a "
+                        "narração vira o áudio da montagem")
+    v.add_argument("--roteiro", type=Path, metavar="ARQUIVO",
+                   help="o texto a narrar (.txt), um parágrafo por bloco")
+    v.add_argument("--pronuncia", metavar="LISTA",
+                   help='como o motor deve ler uma palavra: "PEGI=pégui; GTA=gê tê á" (a '
+                        "legenda continua com a grafia do roteiro)")
     p.add_argument("--versao", action="version", version=f"editor-de-video {__version__}",
                    help="mostra a versão e sai")
     return p
@@ -234,6 +251,81 @@ def _gerar_matriz(pasta: Path, assunto: str) -> int:
     return 0
 
 
+def _instalar_voz() -> int:
+    from editor import motor_de_voz
+
+    if motor_de_voz.instalado():
+        print(f"a voz sintetizada já está instalada em {motor_de_voz.pasta()}")
+        return 0
+    print(f"instalando a voz sintetizada: {motor_de_voz.ESPACO}, {motor_de_voz.TEMPO}")
+    try:
+        r = motor_de_voz.instalar(progresso=lambda etapa, fracao, linha: print(
+            f"\r  {etapa:<36} {fracao * 100:5.1f}%  {linha[:50]:<50}", end="", flush=True))
+    except motor_de_voz.ErroDoMotor as erro:
+        print(f"\nerro: {erro}", file=sys.stderr)
+        return 1
+    print(f"\npronto: o motor vai usar {r.get('aparelho') or 'o processador'}")
+    return 0
+
+
+def _criar_voz(nome: str, gravacao: Path | None) -> int:
+    import tempfile
+
+    from editor import voz_clonada
+
+    try:
+        nome = voz_clonada.nome_valido(nome)
+    except voz_clonada.VozInvalida as erro:
+        print(f"erro: {erro}", file=sys.stderr)
+        return 2
+    if gravacao is None:
+        print("Leia o texto abaixo em voz alta, num lugar silencioso, com uma pausa entre os "
+              "parágrafos.\nGrave num arquivo e rode de novo com --gravacao ARQUIVO.\n")
+        print("\n\n".join(voz_clonada.texto_de_leitura(nome)))
+        return 0
+    if not gravacao.is_file():
+        print(f"não achei a gravação: {gravacao}", file=sys.stderr)
+        return 2
+    with tempfile.TemporaryDirectory(prefix="voz-") as tmp:
+        g = voz_clonada.Gravacao(nome, Path(tmp))
+        print("conferindo a leitura (o Whisper transcreve cada parágrafo)…")
+        g.receber_leitura(gravacao)
+        for p in g.paragrafos:
+            marca = "ok" if p.estado == "ok" else "REGRAVAR"
+            print(f"  {p.indice + 1:2d}. {marca:<8} {p.cobertura:4.0%}  {p.texto[:60]}…")
+            for m in p.motivos:
+                print(f"      {m}")
+        if not g.pronta():
+            print("A voz não foi salva: grave de novo os parágrafos marcados (pela página dá "
+                  "para regravar só eles).", file=sys.stderr)
+            return 1
+        v = voz_clonada.salvar(g)
+    print(f"voz salva: {v['nome']} ({v['segundos']:.0f} s de referência). "
+          f"Use com --minha-voz {v['apelido']}")
+    return 0
+
+
+def _narrar(nome: str, roteiro: Path | None, pronuncia: str | None, destino: Path | None
+            ) -> tuple[Path | None, str]:
+    """O roteiro narrado com a voz salva (e o erro, se houver)."""
+    from editor import motor_de_voz, voz_clonada
+
+    if roteiro is None or not roteiro.is_file():
+        return None, "--minha-voz precisa do --roteiro (o arquivo .txt com o texto)"
+    slug = voz_clonada.apelido(nome)
+    lista = (voz_clonada.ler_pronuncia(pronuncia.replace(";", "\n"))
+             if pronuncia is not None else None)
+    destino = destino or roteiro.with_name(f"{roteiro.stem}-narrado.wav")
+    try:
+        n = voz_clonada.narrar(slug, roteiro.read_text(encoding="utf-8"), destino,
+                               pronuncia=lista, progresso=lambda f, t: print(
+                                   f"\r  narrando {f} de {t} pedaços", end="", flush=True))
+    except (voz_clonada.VozInvalida, motor_de_voz.ErroDoMotor) as erro:
+        return None, f"erro: {erro}"
+    print(f"\nnarração: {n.caminho} ({n.segundos:.1f} s)")
+    return n.caminho, ""
+
+
 def main(argv: list[str] | None = None) -> int:
     _utf8()
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
@@ -259,6 +351,33 @@ def main(argv: list[str] | None = None) -> int:
 
     if a.gerar_matriz is not None:
         return _gerar_matriz(a.gerar_matriz, a.assunto)
+
+    if a.instalar_voz:
+        return _instalar_voz()
+    if a.criar_voz is not None:
+        return _criar_voz(a.criar_voz, a.gravacao)
+    if a.vozes:
+        from editor import voz_clonada
+
+        lista = voz_clonada.vozes()
+        for v in lista:
+            print(f"{v['apelido']:20} {v['nome']} · criada em {v['criada']}")
+        if not lista:
+            print("nenhuma voz salva: crie uma com --criar-voz NOME")
+        return 0
+    if a.minha_voz is not None:
+        if a.audio:
+            print("--minha-voz já é o áudio: não passe --audio junto", file=sys.stderr)
+            return 2
+        so_narrar = a.fundo is None and a.cenas is None
+        narracao, erro = _narrar(a.minha_voz, a.roteiro,
+                                 a.pronuncia, a.saida if so_narrar else None)
+        if erro:
+            print(erro, file=sys.stderr)
+            return 2
+        if so_narrar:
+            return 0
+        a.audio, a.fala = [narracao], "audio"
 
     if a.video is None and a.fundo is None and not (a.pessoa or a.personagem or a.audio
                                                     or a.fala or a.preset or a.cenas):

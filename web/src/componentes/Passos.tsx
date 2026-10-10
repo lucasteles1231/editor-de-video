@@ -11,6 +11,7 @@ import type {
   Modo, MontagemConfig, PersonagemInfo, PorCima, Preset, Saida, VideoInfo, Voz,
 } from '../tipos';
 import {Interruptor} from './Interruptor';
+import {MinhaVoz} from './MinhaVoz';
 import {RevisaoDaMatriz} from './RevisaoDaMatriz';
 
 /** A matriz na tabela de revisão: as linhas e quem as escreveu. */
@@ -172,6 +173,9 @@ export type PropsDoEnvio = {
   personagem: PersonagemInfo | null;
   /** Os áudios separados, na ordem em que tocam. */
   audios: AudioInfo[];
+  /** A "Minha voz": a narração do roteiro, quando já saiu. */
+  narracao: AudioInfo | null;
+  aoNarrar: (a: AudioInfo | null) => void;
   /** A biblioteca de cenas, depois da matriz; e o que falta dela enquanto chega. */
   biblioteca: BibliotecaInfo | null;
   /** A pasta já chegou e falta a matriz. */
@@ -207,7 +211,7 @@ export type PropsDoEnvio = {
 const Aviso: React.FC<{texto: string}> = ({texto}) => (texto ? <div className="aviso erro">{texto}</div> : null);
 
 const NOMES_DA_FALA: Record<Fala, string> = {fundo: 'O vídeo de fundo', pessoa: 'O vídeo da pessoa',
-  audio: 'Áudio separado'};
+  audio: 'Áudio separado', voz: 'Minha voz (de um roteiro)'};
 
 const FONTES_DO_FUNDO: [FonteDoFundo, string][] = [['video', 'Um vídeo'], ['cenas', 'Biblioteca de cenas']];
 const POR_CIMA: [PorCima, string][] = [['pessoa', 'Vídeo da pessoa'], ['personagem', 'Personagem animado'],
@@ -257,7 +261,7 @@ const EnvioDaMontagem: React.FC<PropsDoEnvio> = (p) => {
   const fala = falaEfetiva(m, fundo, p.pessoa, p.audios);
   const mudos = [semSom(fundo) ? 'o vídeo de fundo' : '',
     m.porCima === 'pessoa' && semSom(p.pessoa) ? 'o vídeo da pessoa' : ''].filter(Boolean);
-  const nenhumSom = fala !== 'audio' && semSom(fala === 'fundo' ? fundo : p.pessoa);
+  const nenhumSom = fala !== 'audio' && fala !== 'voz' && semSom(fala === 'fundo' ? fundo : p.pessoa);
   const custo = p.pessoa ? p.pessoa.duracao * p.pessoa.fps * CUSTO_DO_RECORTE_POR_QUADRO : 0;
   return (
     <div className="camadas">
@@ -386,7 +390,8 @@ const EnvioDaMontagem: React.FC<PropsDoEnvio> = (p) => {
         <small>
           {nenhumSom ? 'Nenhum dos vídeos tem som: sem um áudio separado, o vídeo sai mudo, sem cortes e sem legenda.'
             : fala === 'audio' && !p.audios.length ? 'Envie o áudio: dele saem a legenda e os cortes.'
-              : 'Dele saem a legenda e os cortes.'}
+              : fala === 'voz' ? 'A sua voz, gravada uma vez, narra o roteiro. Da narração saem a legenda e os cortes.'
+                : 'Dele saem a legenda e os cortes.'}
           {mudos.length && !nenhumSom ? ` Sem som: ${mudos.join(' e ')}.` : ''}
         </small>
         {fala === 'audio' ? (
@@ -406,7 +411,7 @@ const EnvioDaMontagem: React.FC<PropsDoEnvio> = (p) => {
               aceita="audio/*,.mp3,.wav,.m4a" progresso={p.progresso.audio}
               aoEscolher={(f) => p.aoEscolherAudios([f])} aoEscolherVarios={p.aoEscolherAudios} />
           </>
-        ) : null}
+        ) : fala === 'voz' ? <MinhaVoz narracao={p.narracao} aoNarrar={p.aoNarrar} /> : null}
         <Aviso texto={p.erro.audio} />
       </div>
     </div>

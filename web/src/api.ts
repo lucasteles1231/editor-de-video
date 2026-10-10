@@ -3,8 +3,8 @@
  * URL aberta pelo comando `editar` e fica guardado na aba (sessionStorage).
  */
 import type {
-  AudioInfo, BibliotecaInfo, Edicao, Estado, EstadoChave, EstadoIa, FotoPexels, GeracaoDaMatriz, Ideia, ImagemFundo,
-  PersonagemInfo, RecorteInfo, Saida, Tarefa, VideoInfo,
+  AudioInfo, BibliotecaInfo, Edicao, Estado, EstadoChave, EstadoIa, FotoPexels, GeracaoDaMatriz, GravacaoDaVoz, Ideia,
+  ImagemFundo, MotorDeVoz, Narracao, PersonagemInfo, RecorteInfo, Saida, Tarefa, VideoInfo, VozSalva,
 } from './tipos';
 
 const CHAVE = 'editor-token';
@@ -24,6 +24,8 @@ async function erroDe(r: Response): Promise<Error> {
   const corpo = await r.json().catch(() => ({}));
   return new Error(corpo.detail ?? corpo.erro ?? `erro ${r.status}`);
 }
+
+const JSON_ = {'Content-Type': 'application/json'};
 
 async function pedir<T>(caminho: string, init: RequestInit = {}): Promise<T> {
   const r = await fetch(caminho, {
@@ -208,4 +210,36 @@ export const api = {
       body: JSON.stringify({cena, proporcao, lado}),
     }),
   maoUrl: (estilo: string, tom: string) => `/maos/mao-${estilo}-${tom}.${estilo === '3d' ? 'png' : 'svg'}`,
+
+  // ── "Minha voz": o motor, a leitura, as vozes salvas e a narração ──
+  vozes: () => pedir<{motor: MotorDeVoz; vozes: VozSalva[]}>('/api/vozes'),
+  motorDeVoz: () => pedir<MotorDeVoz>('/api/vozes/motor'),
+  instalarVoz: () => pedir<MotorDeVoz>('/api/vozes/motor', {method: 'POST'}),
+  cancelarInstalacao: () => pedir<MotorDeVoz>('/api/vozes/motor/cancelar', {method: 'POST'}),
+  desinstalarVoz: () => pedir<MotorDeVoz>('/api/vozes/motor', {method: 'DELETE'}),
+  novaGravacao: (nome: string) =>
+    pedir<GravacaoDaVoz>('/api/vozes/gravacoes', {method: 'POST', headers: JSON_, body: JSON.stringify({nome})}),
+  /** Um parágrafo gravado pelo microfone (ou regravado): volta a gravação com a nota dele. */
+  gravarParagrafo: (gravacao: string, indice: number, audio: Blob, nome: string) => {
+    const dados = new FormData();
+    dados.append('arquivo', audio, nome);
+    return pedir<GravacaoDaVoz>(`/api/vozes/gravacoes/${gravacao}/paragrafos/${indice}`, {method: 'PUT', body: dados});
+  },
+  /** A leitura inteira, gravada fora da página. */
+  enviarLeitura: (gravacao: string, arquivo: File, aoProgresso: (fracao: number) => void) =>
+    enviarArquivo<GravacaoDaVoz>(`/api/vozes/gravacoes/${gravacao}/leitura`, arquivo, aoProgresso),
+  paragrafoUrl: (gravacao: string, indice: number, versao: number) =>
+    comToken(`/api/vozes/gravacoes/${gravacao}/paragrafos/${indice}.wav?v=${versao}`),
+  salvarVoz: (gravacao: string) => pedir<VozSalva>(`/api/vozes/gravacoes/${gravacao}/salvar`, {method: 'POST'}),
+  apagarVoz: (apelido: string) => pedir<{vozes: VozSalva[]}>(`/api/vozes/${apelido}`, {method: 'DELETE'}),
+  referenciaUrl: (apelido: string) => comToken(`/api/vozes/${apelido}/referencia.wav`),
+  salvarPronuncia: (apelido: string, texto: string) =>
+    pedir<VozSalva>(`/api/vozes/${apelido}/pronuncia`, {method: 'PUT', headers: JSON_, body: JSON.stringify({texto})}),
+  narrar: (apelido: string, roteiro: string, pronuncia: string) =>
+    pedir<Narracao>(`/api/vozes/${apelido}/narrar`, {
+      method: 'POST', headers: JSON_, body: JSON.stringify({roteiro, pronuncia}),
+    }),
+  narracao: (id: string) => pedir<Narracao>(`/api/vozes/narracoes/${id}`),
+  cancelarNarracao: (id: string) => pedir(`/api/vozes/narracoes/${id}/cancelar`, {method: 'POST'}),
+  audioUrl: (id: string) => comToken(`/api/audios/${id}/arquivo`),
 };

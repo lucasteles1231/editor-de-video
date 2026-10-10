@@ -22,6 +22,8 @@
   <a href="#a-interface">A interface</a> ·
   <a href="#a-montagem-em-camadas">Camadas</a> ·
   <a href="#a-thumbnail">A thumbnail</a> ·
+  <a href="#minha-voz">Minha voz</a> ·
+  <a href="#o-que-cada-função-precisa">Requisitos</a> ·
   <a href="#no-terminal">No terminal</a> ·
   <a href="#desempenho">Desempenho</a> ·
   <a href="#dúvidas-e-problemas">Dúvidas</a>
@@ -38,8 +40,8 @@ a edição que tomaria uma tarde, no estilo dos Shorts, Reels e TikTok:
 - põe zoom, ícones e efeitos sonoros;
 - e ainda gera a thumbnail.
 
-Para um vídeo de notícia, você nem aparece: traz uma pasta de cenas, a narração e, se
-quiser, um personagem. O editor monta o vídeo com as cenas que combinam com o que é dito,
+Para um vídeo de notícia, você nem aparece: traz uma pasta de cenas, a narração (ou só o
+roteiro, lido pela sua voz, gravada uma vez) e, se quiser, um personagem. O editor monta o vídeo com as cenas que combinam com o que é dito,
 cartões animados, câmera e bipe nas palavras que precisam dele.
 
 Por padrão, ele roda **inteiro no seu computador**, sem conta, sem chave de API, sem
@@ -124,6 +126,13 @@ sugestões do Gemini, com uma chave grátis sua.
     asteriscos na legenda: "coca**na". Veja <a href="#voz-e-bipe">Voz e bipe</a>.</td>
   </tr>
   <tr>
+    <td><img src="docs/img/funcoes/minha-voz.svg" width="44" alt=""></td>
+    <td><b>Minha voz.</b> Opcional, instalada à parte. Você lê um texto de 2 minutos uma
+    vez, e a sua voz narra qualquer roteiro: depois disso, basta trazer o texto e as cenas.
+    A legenda sai com a grafia do roteiro, e tudo roda no seu computador. Veja
+    <a href="#minha-voz">Minha voz</a>.</td>
+  </tr>
+  <tr>
     <td><img src="docs/img/funcoes/icones.svg" width="44" alt=""></td>
     <td><b>Ícones automáticos.</b> 122 ícones (Tabler) com traço de caneta, que aparecem
     quando a palavra é dita, inclusive no plural e com sinônimo ("grana" vira dinheiro, "pix"
@@ -162,7 +171,8 @@ sugestões do Gemini, com uma chave grátis sua.
 
 A edição do vídeo segue regras fixas, e o mesmo vídeo sai sempre igual. As IAs que rodam
 no seu computador são o Whisper, que transcreve a fala, e o MODNet, que recorta a pessoa
-para a thumbnail e para a montagem em camadas.
+para a thumbnail e para a montagem em camadas. Se você instalar a Minha voz, entra também
+o Qwen3-TTS, que narra com a sua voz.
 O Gemini só entra se você colar uma chave: nas ideias de thumbnail e, quando ligado, no
 roteiro (as cenas da biblioteca, os cartões animados e os destaques da legenda). O
 roteiro é um pedido de texto da cota grátis por vídeo, mais um quando a resposta precisa
@@ -189,7 +199,7 @@ Você traz:
 |---|---|
 | **A pasta das cenas** | clipes curtos, de uns 2 s cada; as subpastas também valem |
 | **A matriz** | o `cenas.json`, dentro da pasta, com o arquivo e a descrição de cada cena (o formato está em [Biblioteca de cenas](#biblioteca-de-cenas)). Não tem? O botão **Gerar a matriz** escreve para você ([Gerar a matriz](#gerar-a-matriz)) |
-| **A narração** | um arquivo de áudio, ou vários, um por parágrafo, que tocam na ordem do nome |
+| **A narração** | um arquivo de áudio, ou vários, um por parágrafo, que tocam na ordem do nome. Ou só o roteiro, narrado com a sua voz ([Minha voz](#minha-voz)) |
 | **O personagem** (opcional) | um GIF, PNG animado ou WebP, com a boca fechada no primeiro quadro |
 | **A chave do Gemini** (opcional e grátis) | colada no passo 5. Sem ela, as cenas saem pelas palavras e não há cartões |
 
@@ -200,7 +210,7 @@ Você traz:
    junto. Sem ele, clique em **Gerar a matriz** e revise a tabela. A ficha mostra quantas
    cenas entraram e quantas ficaram de fora.
 2. Em **Por cima**, envie o personagem (ou escolha **Nada**). Em **O áudio vem de**,
-   envie os arquivos da narração.
+   envie os arquivos da narração, ou escolha **Minha voz** e cole o roteiro.
 3. Em **Onde você vai postar**, marque Shorts, TikTok ou Reels para o vídeo sair em pé.
 4. No passo 2, escolha o preset **Notícia com cenas**. Ele liga a janela com câmera, os
    cartões animados, a voz de estúdio, o bipe, a legenda em destaques e os sons do tema
@@ -603,6 +613,77 @@ cartões mostram a mesma sílaba em asteriscos: "coca\*\*na", "se\*\*".
   transcrito de novo depois do bipe, o Whisper não reconheceu nenhuma das seis palavras.
 - **Nenhum efeito sonoro** toca em cima de um bipe.
 
+## Minha voz
+
+Opcional. Você grava a sua voz uma vez, lendo um texto, e o editor narra qualquer
+roteiro com ela: depois disso, você traz só o texto e as cenas. O motor é o
+[Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS) 0.6B, de código aberto (Apache 2.0), e
+roda no seu computador.
+
+<img src="docs/img/interface-voz-leitura.png" alt="A leitura no teleprompter: os nove parágrafos numerados, todos aprovados, o terceiro aberto em letra grande (o das perguntas e dos números), o botão Regravar, a barra do microfone e a nota do parágrafo: 7 s, volume, fala 43 dB acima do ruído e 100% das palavras" width="420" align="right">
+
+1. **Instale a voz.** No passo 1, em **O áudio vem de**, escolha **Minha voz (de um
+   roteiro)** e clique em **Instalar a voz sintetizada**. Ela fica num ambiente à parte,
+   com uns 3,5 GB, e leva de 5 a 20 minutos, uma vez só. Desinstalar, pelo link da mesma
+   área, apaga a pasta inteira.
+2. **Grave a leitura.** Diga o seu nome e leia o texto: 9 parágrafos curtos, uns 2
+   minutos. O primeiro é a autorização, com o seu nome. Pelo microfone, a página mostra
+   um parágrafo de cada vez, em letra grande. Ou grave o texto inteiro no celular e envie
+   o arquivo.
+3. **A conferência.** Cada parágrafo é transcrito pelo Whisper e comparado ao texto,
+   palavra por palavra. O que não passar volta com o motivo, e dá para regravar só ele.
+4. **Narre o roteiro.** Cole o texto (ou abra um `.txt`) e clique em **Narrar o
+   roteiro**. A narração vira o áudio da montagem, e o resto é o de sempre: a legenda,
+   os cortes, as cenas, os cartões e o bipe.
+
+<br clear="right">
+
+**O que a conferência pede**, em cada parágrafo:
+
+| O quê | O limite | Por quê |
+|---|---|---|
+| a leitura | 90% das palavras, na ordem | os números contam por extenso dos dois lados: "3.500" ouvido vale o "três mil e quinhentos" lido. O texto não vai de dica para o Whisper: com ele, o Whisper "ouviria" o texto mesmo com a leitura errada |
+| a autorização | o "autorizo", com o seu nome | só existe este caminho para criar uma voz, que é ler o texto. Não há "clonar de um áudio qualquer" |
+| o volume | acima de −45 LUFS | gravações de celular ficaram entre −31 e −36 LUFS e deram um clone bom; abaixo de −45, o microfone está longe demais |
+| o som estourado | menos de 0,1% das amostras no teto | o modelo copiaria a distorção |
+| o ruído | a fala pelo menos 18 dB acima do silêncio | as gravações de teste ficaram entre 26 e 30 dB |
+
+**Por que 2 minutos de leitura, se a voz usa uns 25 s.** O modelo não aprende com a
+gravação: ele a usa de exemplo a cada frase. No teste, o juiz foi o ECAPA, um modelo que
+reconhece quem fala. Num texto novo, a semelhança do clone com a voz real subiu de 0,70
+para 0,75 quando o exemplo passou de 8 para 26 s, e não subiu mais com 38 s, que só
+deixaram a geração 6% mais lenta. Para comparar, duas gravações reais da mesma pessoa, do
+mesmo tamanho, deram de 0,73 a 0,74, e a voz de outra pessoa, 0,02. A leitura mais longa
+serve para escolher os trechos mais limpos, com uma pergunta entre eles, e para passar
+por todos os sons do português.
+
+<img src="docs/img/interface-voz-narrar.png" alt="A Minha voz no passo 1: a voz Ana Lúcia escolhida, o player da referência, o roteiro sobre o PEGI do GTA 6, a lista de pronúncia com PEGI = pégui, o botão Narrar de novo e o player da narração pronta, de 12 s" width="420" align="right">
+
+**A narração:**
+
+- **Em pedaços:** o roteiro vai ao motor em frases inteiras, de até ~220 letras. Os
+  parágrafos ficam separados por 0,6 s, e as frases, por 0,3 s, e o volume sai no dos
+  Shorts (−15 LUFS).
+- **Guardada:** cada pedaço fica guardado. Mudar uma frase do roteiro narra só ela de
+  novo.
+- **A pronúncia:** uma lista como `PEGI = pégui` muda só o que o motor lê. A legenda volta
+  para a grafia do roteiro: no teste, o Whisper ouviu "o Pegue deu 18 anos para o GTA
+  VI", e a legenda saiu como estava escrito, "o PEGI deu dezoito anos para o GTA 6".
+- **O tempo**, num MacBook M5: na placa do Mac, de 1,4 a 1,8 vez a duração da fala, mais
+  uns 7 s para o motor carregar. Só no processador, umas 3,4 vezes, com até 7,5 GB de
+  memória. Num PC sem placa NVIDIA, conte com mais.
+
+<br clear="right">
+
+> [!WARNING]
+> Use só a sua própria voz. Clonar a voz de outra pessoa sem a permissão dela é ilegal. A
+> autorização gravada no começo da leitura fica guardada junto da voz.
+
+Tudo fica no computador: a gravação, a voz salva (na pasta `vozes`, ao lado do
+`config.json`) e o modelo. Nenhum áudio vai para a internet. No terminal, a voz é criada
+com `editar --criar-voz "Seu Nome" --gravacao leitura.m4a` e usada com `--minha-voz`
+(veja [No terminal](#no-terminal)).
+
 ## Efeitos sonoros
 
 Os sons tocam em três momentos:
@@ -710,7 +791,38 @@ O navegador abre sozinho no editor. Para fechar, volte ao terminal e aperte `Ctr
 
 > [!NOTE]
 > Na **primeira edição**, o editor baixa o modelo de transcrição (o `small` tem 464 MB).
-> Isso só acontece uma vez.
+> Isso só acontece uma vez. O que mais cada função baixa, e quanto pede do computador,
+> está em [O que cada função precisa](#o-que-cada-função-precisa).
+
+## O que cada função precisa
+
+O editor instala o que todo vídeo usa. O resto só entra quando você usa: é baixado na
+primeira vez, instalado à parte por um botão, ou é um serviço na internet, com uma chave
+sua. As medidas são de um MacBook com Apple M5 (10 núcleos, 16 GB).
+
+| Função | Obrigatória | Como entra | Disco | Memória (pico) | Onde roda | Internet | Tempo no M5 |
+|---|---|---|---|---|---|---|---|
+| **O editor:** a página, os cortes, as legendas, o zoom, os adesivos, os ícones, os sons, os presets, a montagem, a janela, os cartões, a voz limpa e de estúdio, o bipe, a biblioteca de cenas e a exportação | sim | vem na instalação | ~340 MB, com o Python e o uv | 1,3 GB num vídeo falado de 1 min 46 s; 1,7 GB numa notícia de 49 s em 1080×1920 | processador, em todos os núcleos | só para instalar | 51 s para o vídeo de 1 min 46 s; 116 s para a notícia |
+| **A transcrição** (Whisper) | sim, para o vídeo com fala | baixa no primeiro uso | 464 MB no `small` (de 75 MB no `tiny` a 1,5 GB no `medium`) | 1,3 GB no `small`; 2,4 GB no `medium` | processador | só na primeira vez | 40 s de fala em 10 s no `small` e em 29 s no `medium` |
+| **O recorte da pessoa** (MODNet), na thumbnail e na montagem | não | baixa no primeiro uso | 26 MB | | processador | só na primeira vez | ~0,07 s por quadro |
+| **O Gemini:** ideias de thumbnail, roteiro, cartões, destaques e matriz | não | serviço, com uma chave grátis | | | nos servidores do Google | sim | segundos por pedido |
+| **O fundo gerado** pelo Gemini | não | serviço pago, uns US$ 0,04 por imagem | | | nos servidores do Google | sim | |
+| **As fotos do Pexels**, na thumbnail | não | serviço, com uma chave grátis | | | nos servidores do Pexels | sim | |
+| **Os 4 sons do tema Notícia** sem licença livre | não | baixam no primeiro uso | ~0,6 MB | | | só na primeira vez; sem ela, toca um parecido | |
+| **Minha voz** (Qwen3-TTS) | não | instalação à parte, por um botão | ~3,5 GB: o ambiente (1,2 GB) e o modelo (2,3 GB) | 5,4 GB na placa do Mac (memória unificada); 7,5 GB só no processador | chip Apple ou placa NVIDIA, de preferência; também só no processador, mais devagar | só para instalar | de 1,4 a 1,8 vez a duração da fala na placa; ~3,4 vezes só no processador |
+| **O navegador**, para a página | sim | já está no computador | | | | não | |
+
+- **O mínimo:** o editor e o Whisper `small`, uns 0,8 GB de disco. Num computador com 8
+  GB de memória, sobra.
+- **Com a Minha voz:** mais uns 3,5 GB de disco e, de preferência, um Mac com chip Apple
+  ou um PC com placa NVIDIA. O pico medido foi de 5,4 GB: num computador de 8 GB, feche
+  os outros programas antes de narrar. Só no processador, ela pede 16 GB.
+- **Onde foi testado:** os testes rodam em Windows, macOS e Linux (veja o selo no topo), e
+  a página, no Chromium, no Firefox e no WebKit. A Minha voz foi medida só no Mac: no
+  Windows, a instalação escolhe o PyTorch com CUDA quando há placa NVIDIA, mas ainda não
+  foi experimentada num PC de verdade.
+- **Os tempos** são do M5. Num computador mais modesto, conte com mais; veja
+  [Desempenho](#desempenho).
 
 ## Instalação em detalhe
 
@@ -724,6 +836,8 @@ O navegador abre sozinho no editor. Para fechar, volte ao terminal e aperte `Ctr
 | O editor e o que ele usa | ~220 MB | um ambiente só dele, criado pelo uv |
 | O modelo do Whisper (`small`) | 464 MB | Windows: `%USERPROFILE%\.cache\huggingface` · macOS: `~/.cache/huggingface` |
 | O modelo do recorte (MODNet), na primeira vez que a pessoa é recortada | 26 MB | a mesma pasta do Hugging Face |
+| A voz sintetizada (Minha voz), só se você instalar: o ambiente e o modelo | ~3,5 GB | `motor-de-voz`, na pasta de dados: `%LOCALAPPDATA%\editor-de-video` (Windows) ou `~/Library/Application Support/editor-de-video` (macOS) |
+| As vozes gravadas: a leitura e a referência de cada uma | ~15 MB cada | `vozes`, na mesma pasta de dados |
 | As chaves do Gemini e do Pexels, se você colar | — | `config.json`, em `%LOCALAPPDATA%\editor-de-video` (Windows) ou `~/Library/Application Support/editor-de-video` (macOS) |
 | Os vídeos editados e as thumbnails | — | `editor-de-video`, dentro da pasta **Vídeos** (Windows) ou **Filmes** (macOS) |
 
@@ -767,7 +881,9 @@ uv tool uninstall editor-de-video
 ```
 
 O modelo continua no cache do Hugging Face. Para liberar o espaço, apague a pasta
-`models--Systran--faster-whisper-small` dentro de `.cache/huggingface/hub`.
+`models--Systran--faster-whisper-small` dentro de `.cache/huggingface/hub`. A voz
+sintetizada sai pelo link **Desinstalar a voz sintetizada**, na página, ou apagando a
+pasta `motor-de-voz`.
 
 </details>
 
@@ -796,6 +912,11 @@ editar --gerar-matriz cenas/ --assunto "trailers do GTA 6"   # escreve cenas/cen
 editar --cenas cenas/ --matriz cenas/cenas.json --audio p1.m4a p2.m4a p3.m4a \
        --personagem boneco.gif --preset noticia --quadro vertical
 editar video.mp4 --voz limpa --bipe "palavra, outra"  # voz limpa e bipe na lista
+editar --instalar-voz                             # a voz sintetizada (Minha voz), ~3,5 GB
+editar --criar-voz "Ana"                          # mostra o texto a ler
+editar --criar-voz "Ana" --gravacao leitura.m4a   # confere a leitura e salva a voz
+editar --cenas cenas/ --matriz cenas/cenas.json --minha-voz ana --roteiro roteiro.txt \
+       --preset noticia --quadro vertical         # a notícia, narrada com a sua voz
 editar eu.mp4 --fundo aula.mp4 --fala fundo        # o som vem da aula, e não da câmera
 editar talk.mp4 --idioma en --modelo medium       # fala em inglês, modelo maior
 editar video.mp4 -o final.mov --codec prores      # ProRes, para levar a outro editor
@@ -841,6 +962,13 @@ editar --formatos                                 # o que este computador grava
 | `--personagem` | um GIF, PNG animado ou WebP, em loop por cima | |
 | `--audio` | um ou vários áudios separados (a narração gravada à parte), tocados em ordem | |
 | `--fala` | de onde vem o áudio: `fundo`, `pessoa` ou `audio` | o `--audio`; senão a pessoa, se tiver som; senão o fundo |
+| `--instalar-voz` | instala a voz sintetizada (Minha voz), num ambiente à parte | |
+| `--criar-voz NOME` | sem `--gravacao`, mostra o texto a ler; com ela, confere a leitura e salva a voz | |
+| `--gravacao ARQUIVO` | com `--criar-voz`: a leitura inteira, gravada num arquivo | |
+| `--vozes` | mostra as vozes salvas | |
+| `--minha-voz NOME` | narra o `--roteiro` com a voz salva; com `--cenas` ou `--fundo`, a narração vira o áudio da montagem (sozinho, grava `<roteiro>-narrado.wav`) | |
+| `--roteiro ARQUIVO` | o texto a narrar (`.txt`), com uma linha em branco entre os parágrafos | |
+| `--pronuncia LISTA` | como o motor lê uma palavra: `"PEGI=pégui; GTA=gê tê á"` (a legenda não muda) | a lista salva com a voz |
 | `--recorte` | `transparente` (o vídeo já vem sem fundo) ou `modnet` | detectado no arquivo |
 | `--quadro` | `fundo`, `vertical`, `horizontal` ou `quadrado` | `fundo` |
 | `--parada`, `--mover` | quem está por cima fica parado, ou muda de lugar | muda |
@@ -892,6 +1020,8 @@ flowchart TD
     R[recorte da pessoa, com o MODNet] --> T
     G[ideias do Gemini, se você ligar] -.-> T
     R2[roteiro do Gemini, se você ligar: cenas, cartões e destaques] -.-> P
+    N([só o texto, com a Minha voz]) -.-> Q[narração com a sua voz, pelo Qwen3-TTS, no seu computador]
+    Q -.-> W
     D --> S([vídeo editado + .srt + .vtt])
     T --> I([PNG e JPG])
 ```
@@ -950,7 +1080,8 @@ Para ir mais rápido:
 - grave em 720p;
 - troque o modelo para `base`.
 
-Editar de novo o mesmo vídeo pula a transcrição.
+Editar de novo o mesmo vídeo pula a transcrição. Os tempos da voz sintetizada estão em
+[Minha voz](#minha-voz).
 
 ## Dúvidas e problemas
 
@@ -1084,10 +1215,24 @@ vezes, ele já está no computador.
 </details>
 
 <details>
+<summary><b>A Minha voz não ficou parecida, ou leu uma palavra errado</b></summary>
+
+- **Parecida:** grave de novo num lugar mais silencioso, perto do microfone, no seu jeito
+  normal de falar (como num vídeo, e não como quem lê). A voz copia o volume, o cômodo e
+  o ritmo da gravação.
+- **Uma palavra:** siglas e nomes estrangeiros vão na lista de **Pronúncia**
+  (`PEGI = pégui`). A legenda continua com a grafia do roteiro.
+- **A instalação falhou:** a página mostra as últimas linhas do erro. Confira a internet e
+  o espaço livre (uns 3,5 GB) e clique em **Instalar** de novo.
+
+</details>
+
+<details>
 <summary><b>Dá para usar sem internet?</b></summary>
 
-Sim, depois que os modelos foram baixados uma vez. Só as partes opcionais da thumbnail
-precisam de internet: as ideias do Gemini, as fotos do Pexels e o fundo gerado. Mesmo
+Sim, depois que os modelos foram baixados uma vez, e a Minha voz também, depois de
+instalada. Só as partes opcionais da thumbnail precisam de internet: as ideias do Gemini,
+as fotos do Pexels e o fundo gerado. Mesmo
 nelas, a página só fala com o seu computador, e é o editor que busca o resto.
 
 </details>
@@ -1143,6 +1288,9 @@ adesivos e ícones, só que para o vídeo de qualquer pessoa.
   uma [licença da Remotion](https://www.remotion.pro/license).
 - Os efeitos sonoros de arquivo são da [Kenney](https://kenney.nl), em domínio público
   (CC0).
+- A voz sintetizada, instalada à parte só por quem usa a Minha voz, é o
+  [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS), da equipe Qwen, da Alibaba, em
+  Apache 2.0 (o código e o modelo).
 - O vídeo das imagens deste README é
   ["Man doing podcast"](https://www.pexels.com/video/man-doing-podcast-6892735/), de
   cottonbro studio, no Pexels.

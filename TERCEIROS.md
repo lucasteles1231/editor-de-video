@@ -73,6 +73,23 @@ x265, que são GPL. É isso que deixa o editor gravar H.264 e H.265 sem instalar
 sistema. Essas bibliotecas são baixadas do PyPI na instalação, e este repositório não
 as redistribui.
 
+## Instalado à parte, só com a Minha voz (não vem neste repositório)
+
+O botão **Instalar a voz sintetizada** (ou `editar --instalar-voz`) cria um ambiente só
+para a voz, em `motor-de-voz`, na pasta de dados do editor, e baixa o modelo para dentro
+dele. Quem não usa a Minha voz não baixa nada disto.
+
+| Pacote | Para quê | Licença |
+|---|---|---|
+| [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS) (`qwen-tts` 0.1.1), da equipe Qwen, da Alibaba | sintetizar a voz | Apache-2.0 |
+| O modelo [Qwen3-TTS-12Hz-0.6B-Base](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-0.6B-Base) (2,3 GB) | a voz, a partir da referência gravada | Apache-2.0 |
+| [PyTorch](https://pytorch.org/) | roda o modelo, na placa do Mac, na NVIDIA ou no processador | BSD-3-Clause, com partes em Apache-2.0, BSD-2-Clause, BSL-1.0 e MIT |
+| Transformers, Accelerate e huggingface-hub | carregam o modelo | Apache-2.0 |
+| librosa, soundfile, einops e o resto do que o qwen-tts pede | o áudio e as contas do modelo | ISC, BSD-3-Clause e MIT, entre outras |
+
+A gravação da pessoa, a voz salva e as narrações ficam no computador. O motor não fala
+com a internet depois de instalado.
+
 ## Serviços opcionais
 
 Nenhum deles é chamado sem uma chave de quem usa o editor. As chaves ficam no

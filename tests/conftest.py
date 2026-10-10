@@ -2,7 +2,8 @@
 O que os testes compartilham.
 
 - **Nenhum teste roda modelo de verdade nem chama a internet:** o transcritor falso, o
-  recorte falso, a IA falsa e o Pexels falso ficam ligados para todos, e os sons que o
+  recorte falso, a IA falsa, o Pexels falso e o motor de voz falso ficam ligados para
+  todos, e os sons que o
   editor baixaria (os do Remotion sem licença livre) não vêm: toca a reserva deles.
   Esquecer isso num teste da
   interface rodaria o Whisper (ou gastaria a chave do Gemini) sem ninguém perceber. Os
@@ -25,7 +26,19 @@ import httpx
 import numpy as np
 import pytest
 
-from editor import chaves, ia, imagens, pexels, recorte, render, servidor, sons, transcricao
+from editor import (
+    chaves,
+    ia,
+    imagens,
+    motor_de_voz,
+    pexels,
+    recorte,
+    render,
+    servidor,
+    sons,
+    transcricao,
+    voz_clonada,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -34,6 +47,7 @@ def _isolado(tmp_path, monkeypatch):
     monkeypatch.setenv(recorte.VARIAVEL_FALSA, "falso")
     monkeypatch.setenv(ia.VARIAVEL_FALSA, "falsa")
     monkeypatch.setenv(pexels.VARIAVEL_FALSA, "falso")
+    monkeypatch.setenv(motor_de_voz.VARIAVEL_FALSA, "falsa")
     monkeypatch.delenv(ia.VARIAVEL_DA_CHAVE, raising=False)
     monkeypatch.delenv(pexels.VARIAVEL_DA_CHAVE, raising=False)
     monkeypatch.setattr(ia, "_geradas", 0)
@@ -51,7 +65,8 @@ def _isolado(tmp_path, monkeypatch):
     for nome, modulo, funcao in (("_imagens", imagens, "pasta"),
                                  ("_pexels", pexels, "_pasta_do_cache"),
                                  ("_dados", ia, "pasta_de_dados"),
-                                 ("_sons", sons, "pasta_dos_baixados")):
+                                 ("_sons", sons, "pasta_dos_baixados"),
+                                 ("_narracoes", voz_clonada, "pasta_das_narracoes")):
         pasta = tmp_path / nome
         pasta.mkdir()
         monkeypatch.setattr(modulo, funcao, lambda pasta=pasta: pasta)

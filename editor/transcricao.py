@@ -176,6 +176,153 @@ def dica_das_palavras(palavras: list[str]) -> str:
     return ", ".join(palavras) + "." if palavras else ""
 
 
-__all__ = ["IDIOMA_PADRAO", "MODELOS", "MODELO_PADRAO", "VARIAVEL_FALSA", "Palavra",
-           "carregar", "dica_das_palavras", "identidade", "modelo_baixado", "salvar",
+# ── o texto conhecido ────────────────────────────────────────────────────
+# Quando o texto falado é conhecido (a leitura da "Minha voz", ou o roteiro que a voz
+# sintetizada narrou), o Whisper só dá os tempos: a comparação é palavra a palavra, e a
+# legenda volta para a grafia do texto.
+
+_UNIDADES = ("zero", "um", "dois", "três", "quatro", "cinco", "seis", "sete", "oito", "nove",
+             "dez", "onze", "doze", "treze", "catorze", "quinze", "dezesseis", "dezessete",
+             "dezoito", "dezenove")
+_DEZENAS = ("", "", "vinte", "trinta", "quarenta", "cinquenta", "sessenta", "setenta",
+            "oitenta", "noventa")
+_CENTENAS = ("", "cento", "duzentos", "trezentos", "quatrocentos", "quinhentos", "seiscentos",
+             "setecentos", "oitocentos", "novecentos")
+_GRANDES = ((10**9, "um bilhão", "bilhões"), (10**6, "um milhão", "milhões"), (1000, "mil", "mil"))
+
+
+def por_extenso(n: int) -> str:
+    """O número inteiro por extenso, como se fala: 3500 é "três mil e quinhentos"."""
+    if n < 20:
+        return _UNIDADES[n]
+    if n < 100:
+        d, u = divmod(n, 10)
+        return _DEZENAS[d] + (f" e {_UNIDADES[u]}" if u else "")
+    if n == 100:
+        return "cem"
+    if n < 1000:
+        c, r = divmod(n, 100)
+        return _CENTENAS[c] + (f" e {por_extenso(r)}" if r else "")
+    for valor, um, varios in _GRANDES:
+        if n >= valor:
+            q, r = divmod(n, valor)
+            cabeca = um if q == 1 else f"{por_extenso(q)} {varios}"
+            if not r:
+                return cabeca
+            # "mil e quinhentos", "mil e vinte", mas "mil duzentos e trinta"
+            return cabeca + (" e " if r < 100 or r % 100 == 0 else " ") + por_extenso(r)
+    return str(n)
+
+
+def chaves(texto: str) -> list[str]:
+    """As palavras de um texto do jeito que se comparam: minúsculas, sem acento, sem
+    pontuação e com os números por extenso (o Whisper escreve "3.500" o que foi lido
+    "três mil e quinhentos", e "15%" o que foi lido "quinze por cento")."""
+    import re
+    import unicodedata
+
+    t = texto.lower().replace("%", " por cento ")
+    t = re.sub(r"(?<=\d)\.(?=\d{3}\b)", "", t)                 # 3.500 → 3500
+    t = re.sub(r"\d{1,12}", lambda m: f" {por_extenso(int(m.group()))} ", t)
+    t = "".join(c for c in unicodedata.normalize("NFKD", t) if not unicodedata.combining(c))
+    return re.findall(r"[a-z0-9]+", t)
+
+
+def texto_ao_lado(audio: Path) -> str | None:
+    """O texto que se sabe que foi falado neste áudio (``narracao.roteiro.txt`` ao lado de
+    ``narracao.wav``), ou ``None``."""
+    ao_lado = Path(audio).with_suffix(".roteiro.txt")
+    try:
+        return ao_lado.read_text(encoding="utf-8") if ao_lado.is_file() else None
+    except OSError:
+        return None
+
+
+#: Abaixo disto, o texto não é o deste áudio, e as palavras do Whisper ficam como estão.
+CASAMENTO_MINIMO = 0.5
+
+
+def ajustar_ao_texto(palavras: list[Palavra], texto: str) -> list[Palavra]:
+    """As palavras escritas como no texto, nos tempos que o Whisper ouviu.
+
+    Cada palavra do texto pega o tempo das palavras ouvidas que casaram com ela. As que
+    não casaram (a sigla que o Whisper escreveu de outro jeito, "Peggy" no lugar de
+    "PEGI") dividem o intervalo entre as vizinhas que casaram, pelo número de letras."""
+    from difflib import SequenceMatcher
+
+    tokens: list[str] = []
+    for t in texto.split():
+        if chaves(t) or not tokens:
+            tokens.append(t)
+        else:                                  # um travessão solto vai junto da anterior
+            tokens[-1] += f" {t}"
+    esperadas, de_qual = [], []
+    for i, t in enumerate(tokens):
+        for k in chaves(t):
+            esperadas.append(k)
+            de_qual.append(i)
+    ouvidas, de_quem = [], []
+    for j, w in enumerate(palavras):
+        for k in chaves(w.texto):
+            ouvidas.append(k)
+            de_quem.append(j)
+    if not esperadas or not ouvidas:
+        return palavras
+    blocos = SequenceMatcher(None, esperadas, ouvidas, autojunk=False).get_matching_blocks()
+    casadas: dict[int, set[int]] = {}
+    for a, b, n in blocos:
+        for d in range(n):
+            casadas.setdefault(de_qual[a + d], set()).add(de_quem[b + d])
+    if sum(n for _a, _b, n in blocos) < CASAMENTO_MINIMO * len(esperadas):
+        logger.warning("o texto ao lado não é o deste áudio: a legenda fica com o Whisper")
+        return palavras
+
+    tempos: list[tuple[float, float, float] | None] = []
+    for i in range(len(tokens)):
+        js = casadas.get(i)
+        tempos.append(None if not js else (min(palavras[j].inicio for j in js),
+                                           max(palavras[j].fim for j in js),
+                                           sum(palavras[j].prob for j in js) / len(js)))
+    # "3.500" ouvido casa com as quatro palavras de "três mil e quinhentos": elas dividem
+    # o tempo dele, em vez de aparecerem todas juntas.
+    i = 0
+    while i < len(tokens):
+        k = i + 1
+        while k < len(tokens) and tempos[i] is not None and tempos[k] == tempos[i]:
+            k += 1
+        if k - i > 1:
+            a, b, prob = tempos[i]
+            letras = [max(1, len(tokens[m])) for m in range(i, k)]
+            t = a
+            for m, n in zip(range(i, k), letras, strict=True):
+                fim = t + (b - a) * n / sum(letras)
+                tempos[m] = (t, fim, prob)
+                t = fim
+        i = k
+    i = 0
+    while i < len(tokens):
+        if tempos[i] is not None:
+            i += 1
+            continue
+        k = i
+        while k < len(tokens) and tempos[k] is None:
+            k += 1
+        antes, depois = (tempos[i - 1] if i else None), (tempos[k] if k < len(tokens) else None)
+        a = antes[1] if antes else palavras[0].inicio
+        b = depois[0] if depois else max(palavras[-1].fim, a + 0.3 * (k - i))
+        b = max(b, a + 0.02 * (k - i))
+        letras = [max(1, len(tokens[m])) for m in range(i, k)]
+        t = a
+        for m, n in zip(range(i, k), letras, strict=True):
+            fim = t + (b - a) * n / sum(letras)
+            tempos[m] = (t, fim, 0.5)
+            t = fim
+        i = k
+    return [Palavra(tok, round(t[0], 3), round(max(t[1], t[0] + 0.02), 3), round(t[2], 3))
+            for tok, t in zip(tokens, tempos, strict=True) if t is not None]
+
+
+__all__ = ["CASAMENTO_MINIMO", "IDIOMA_PADRAO", "MODELOS", "MODELO_PADRAO", "VARIAVEL_FALSA",
+           "Palavra", "ajustar_ao_texto", "carregar", "chaves", "dica_das_palavras",
+           "identidade", "modelo_baixado", "por_extenso", "salvar", "texto_ao_lado",
            "transcrever"]
